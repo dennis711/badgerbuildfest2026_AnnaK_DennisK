@@ -83,8 +83,8 @@ function updateStatus() {
     el.innerHTML = `<span class="ai-spark">${icon('ai', 14)}</span> AI is finding events in ${esc(city)} · ${esc(rangeLabel())}`;
     el.className = 'ai-status loading';
     el.hidden = false;
-  } else if (status?.status === 'error') {
-    el.innerHTML = status.code === 'missing_key'
+  } else if (status?.status === 'error' || state.aiEnabled === false) {
+    el.innerHTML = state.aiEnabled === false || status.code === 'missing_key'
       ? `${icon('ai', 14)} Demo events only · add an API key for real events`
       : `${icon('ai', 14)} Couldn’t load real events · <button data-action="retry">Retry</button>`;
     el.className = 'ai-status error';
@@ -337,7 +337,7 @@ else { $('#map-notice').textContent = 'The map library could not load. Reload to
 bindCardGestures($('#event-card'), {getState: () => state.cardState, onExpand: expandCard, onClose: closeCard, onBrowse: browse});
 store.subscribe(() => { refresh(); scrubber.refreshCounts(); });
 
-fetch('/api/status').then(r => r.json()).then(s => { if (!s.ai) state.aiEnabled = false; }).catch(() => {}).finally(() => locate({quiet: true}));
+fetch('/api/status').then(r => r.json()).then(s => { if (!s.ai) { state.aiEnabled = false; updateStatus(); } }).catch(() => {}).finally(() => locate({quiet: true}));
 
 // ---------- interaction ----------
 document.addEventListener('click', async event => {
