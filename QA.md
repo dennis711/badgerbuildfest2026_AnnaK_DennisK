@@ -1,5 +1,7 @@
 # UI refinement verification
 
+> Recorded for the previous UI iteration (before the Day/Week/Month scrubber and the AI event scraper).
+
 Verified locally in the browser with the dependency-free Node server.
 
 - Viewports: 375 × 667, 390 × 844, 430 × 932, and desktop.

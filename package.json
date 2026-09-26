@@ -1,1 +1,1 @@
-{"name":"out-there","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node server.mjs","dev":"node server.mjs","test":"node --test"}}
+{"name":"out-there","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node server.mjs","dev":"node server.mjs","test":"node --test"},"dependencies":{"selfsigned":"^5.5.0"}}

@@ -1,53 +1,81 @@
 # Out There
 
-Project for **badgerbuildfest2026_AnnaK_DennisK** — BadgerBuildFest 2026 Repository.
+Project for **badgerbuildfest2026_AnnaK_DennisK** — BadgerBuildFest 2026.
 
-A mobile-first, map-first social discovery prototype for Anna in Madison. No backend, accounts, messages, or public people browsing.
+A map-first social discovery app. Open it and you see a quiet map with events picked for you. Scrub through days, weeks and months with the time scrubber, tap a marker, join, and meet people in person.
 
-## Run
+## How events reach the map
 
-Requires Node.js 20 or later. No install step or API key needed.
+| Marker | Source | How it works |
+|---|---|---|
+| Gold | **Partner (sponsored)** | Organisers pay to be shown and get a clearly labelled boost in For You. This is the business model. |
+| Navy | **Verified host** | Trusted hosts publish their own events. Ratings build reputation, which lifts them in For You. |
+| Green | **Found by AI** | The AI event scraper searches the web for real events at your location and date (Claude + web search). |
+| Red | **Community meetup** | The Event-Creator agent notices when enough people nearby want the same thing at the same time, checks the weather and proposes a meetup. Once enough people are in, it appears on the map. |
+
+For You ranking (`src/logic.js → fyScore`): interests + connections going + host reputation + sponsored boost − distance; ended events sink.
+
+## Run it (laptop + phone)
+
+Requires Node.js 20 or later.
 
 ```sh
-node server.mjs
+npm install
+cp .env.example .env      # then paste your Anthropic API key into .env
+npm start
 ```
 
-Open http://localhost:5173. Run checks with `node --test`.
+The terminal prints two addresses:
+
+- **Laptop:** `http://localhost:5173`
+- **Phone:** `https://<your-laptop-ip>:5174` — phone and laptop must be on the same Wi-Fi. The certificate is self-signed, so accept the warning once ("Show details → visit this website" on iPhone, "Advanced → Proceed" on Android). HTTPS is required for the phone to share its location.
+
+**Fullscreen on the phone:** open the address in Safari (iPhone) or Chrome (Android) → Share / menu → **Add to Home Screen**. Starting it from the home screen opens it fullscreen without browser bars.
+
+Without an API key the app still runs with the demo partner/host events in Madison, and meetup proposals use template texts.
+
+## The AI event scraper
+
+`GET /api/events?lat=…&lng=…&from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+1. The server turns the coordinates into a city (OpenStreetMap Nominatim).
+2. It sends the prompt in [`prompts/event-scraper.md`](prompts/event-scraper.md) (our original prompt, unchanged) plus the JSON format in [`prompts/event-scraper-format.md`](prompts/event-scraper-format.md) to Claude with the web search tool. The user message is only the city and the date or date range.
+3. The answer is parsed, validated (date in range, location within ~60 km, only http(s) links), missing coordinates are looked up from the address, and everything is cached in `.cache/` for 12 hours.
+
+The scrubber decides the date: **Day** asks for that day, **Week** for Mon–Sun, **Month** for the whole month (top 20 each). A request happens only when you stop scrubbing, and each range is asked only once. One request takes roughly 20–60 seconds and uses up to 8 web searches.
+
+Change model, search count or cache time in `.env`.
+
+## Time scrubber
+
+`src/time-scrubber.js` is a plain-JS port of our calendar widget design: spring physics, drag sideways to move, swipe up for Week and again for Month, swipe down to go back. Mouse wheel, arrow keys and the Day / Week / Month labels work too. Dots inside a pill show how many events that day, week or month has.
 
 ## Structure
 
-- `src/app.js`: app shell, state coordination, filters, navigation, and persistence.
-- `src/map-view.js`: existing Leaflet camera/markers with a styled vector basemap, clustering, viewport updates, and the person glyph.
-- `src/time-control.js`: compact day/hour instrument with pointer, keyboard, and wheel controls.
-- `src/event-card.js`: preview/full event views, finite horizontal browsing, and swipe gestures.
-- `src/wallet.js`: chronological Upcoming passes, Saved, private History, and cancellation acknowledgements.
-- `src/feedback.js`: haptic-ready custom events; no web vibration.
-- `src/data.js`: separate mock users, connections, hosts, and events.
-- `src/logic.js`: time, interest, mode, and privacy filtering.
-- `src/icons.js`: consistent inline SVG icons.
-- `src/styles.css`: responsive layouts and centralized semantic color tokens, with a future dark-theme token override.
-- `public/vendor`: locally bundled Leaflet 1.9.4, MapLibre GL 5.6.2, the Leaflet adapter 0.1.0, their licenses, and the OpenFreeMap Liberty base style.
-- `public/anna.svg`, `public/park-cover.svg`: local illustrated demo assets; no photo downloads or external UI fonts.
-- `server.mjs`: dependency-free local static server.
+- `server.mjs` – local server (HTTP + HTTPS on the LAN), static files and the API routes
+- `server/event-scraper.js` – AI event scraper (prompt, validation, geocoding, cache)
+- `server/proposals.js` – Event-Creator agent: interest clusters, weather (Open-Meteo), AI-written invitations
+- `server/claude.js` – minimal Claude Messages API client (handles `pause_turn` during long searches)
+- `server/geocode.js` – Nominatim reverse/forward geocoding, rate limited to 1 request per second
+- `src/app.js` – app shell, state, tabs, location, AI loading
+- `src/time-scrubber.js` – the Day / Week / Month scrubber
+- `src/event-store.js` – one pool for all four event sources
+- `src/map-view.js` – Leaflet + MapLibre vector map without shop/POI clutter, marker clustering
+- `src/event-card.js` – preview/full event sheet with swipe gestures
+- `src/wallet.js` – My Events (upcoming, saved, private history)
+- `src/logic.js` – filters, For You ranking, time helpers
+- `src/escape.js` – everything from the web is escaped before it is shown
+- `prompts/` – the AI prompts
 
-## Demo behavior
+## Tests
 
-The demo clock is fixed at September 26, 2026, 8 AM. Dates use the browser's local timezone for a consistent mock wall clock; production should use the event's America/Chicago timezone. The default is personalized Social discovery during the next three hours. Mode and interests remain independent.
+```sh
+npm test
+```
 
-Tap the compact time control to explore. Drag its scale beneath the fixed indicator, or focus the slider and use arrow keys. Days have no fixed forward limit. Choosing another day selects All day; switch to Time to select a three-hour window. The dial collapses after inactivity or when panning the map. Empty periods remain empty. Here & now restores the demo clock and requests location, falling back to Madison when unavailable.
+## Prototype limits
 
-Tap an event marker to open Preview. Drag the handle up for Full event, down to return, and down again to close. Explicit buttons provide keyboard equivalents. Swipe horizontally to browse the finite set of events nearby when the card opened. The camera moves only enough to keep the selected marker in the visible map area. Map panning automatically refreshes the viewport's markers.
-
-Save and Join are independent and persist in the existing `out-there-anna` localStorage record. Events reflects both. Joining is immediate; leaving requires confirmation. Upcoming is chronological and excludes ended events using the attendance clock, not the date explored on the map. Ended joins remain in private History. Cancelled joins show an acknowledgement notice in Events, then move to History. Cancellation behavior is model-ready and covered by fixtures in tests; no fake cancellation is triggered in the UI.
-
-External tickets, host pages, and Report are explicitly mocked. Sharing uses the native share sheet when available, otherwise clipboard copy. Local event links open the event directly; they are not published public pages. Directions opens an external routing page. All hosts, ratings, capacity, attendance, and demo location are fictional. Only connections who share attendance with Anna are exposed. Connections, AI, and the profile remain intentionally lightweight placeholders.
-
-`recommendationProfile` keeps future intent, availability, routines, and followed-host inputs separate from event data. No AI plans, demand aggregation, or generated events are implemented. `outthere:feedback` events expose `day-boundary`, `hour-boundary`, `event-change`, `joined`, and `recenter` hooks for a future native shell.
-
-The basemap uses [OpenFreeMap](https://openfreemap.org/quick_start/) vector tiles through the [MapLibre Leaflet adapter](https://github.com/maplibre/maplibre-gl-leaflet). Commercial POIs, shields, and 3D buildings are removed; street labels appear progressively, while water and parks keep their colors. Map data/glyphs require internet access, but no API key. A standard OpenStreetMap raster fallback is available if vector setup fails. Its [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) applies. The UI uses Helvetica Neue / Helvetica / Arial / system sans-serif, without external font requests.
-
-No dark-mode switch is exposed. Semantic tokens prepare the UI; the vector map would also need matching dark paint values.
-
-## Verification
-
-Run `node --test` (or `node --test --test-isolation=none` where subprocesses are restricted). Tests cover privacy, time boundaries including overnight events, mode/interest intersections, cancellation acknowledgement, wallet lifecycle, and distances. Browser verification is recorded in `QA.md`.
+- The people behind meetup proposals are simulated personas placed around your location.
+- Partner payments, host verification, ratings and connections are mocked.
+- Event times are shown in the phone's timezone (assumed to be the event's city).
+- Map tiles: [OpenFreeMap](https://openfreemap.org/) vector tiles; geocoding: [Nominatim](https://operations.osmfoundation.org/policies/nominatim/) (fair-use limits apply); weather: [Open-Meteo](https://open-meteo.com/).

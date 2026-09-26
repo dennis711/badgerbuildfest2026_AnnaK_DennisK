@@ -1,0 +1,81 @@
+/* Time scrubber (port of the "Kalender Widget") + AI additions. */
+
+/* The scrubber floats full-width above the pill navigation. A soft fade
+   keeps the map readable behind it. */
+.time-area{left:0;right:0;transform:none;max-width:none;bottom:calc(var(--above-nav) - 6px);gap:0;pointer-events:none}
+.time-area>*{pointer-events:auto}
+.time-area:before{content:'';position:absolute;left:0;right:0;bottom:calc(-1 * var(--above-nav));height:calc(100% + var(--above-nav) + 20px);background:linear-gradient(to bottom,#f3f3f300 0%,#f3f3f3d9 38%,#f6f6f4 70%);pointer-events:none;z-index:-1}
+#time-control{background:none;border:0;border-radius:0;box-shadow:none;overflow:visible;width:100%}
+#empty-map{margin-bottom:4px}
+
+.scrubber{--scrub-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,sans-serif;position:relative;height:222px;font-family:var(--scrub-font);-webkit-font-smoothing:antialiased}
+.scrubber-indicator{position:absolute;left:50%;top:6px;transform:translateX(-50%);width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid #111;z-index:40;pointer-events:none}
+.scrubber-strip{position:absolute;left:0;right:0;top:0;bottom:34px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;outline-offset:-4px;-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 16%,#000 84%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0%,#000 16%,#000 84%,transparent 100%)}
+.scrubber-strip.dragging{cursor:grabbing}
+.scrub-item{position:absolute;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;cursor:pointer;will-change:left}
+.scrub-label{position:absolute;top:-24px;font-size:11px;font-weight:600;letter-spacing:.04em;white-space:nowrap}
+.scrub-pill{box-sizing:border-box;display:flex;justify-content:center;position:relative}
+.scrub-badge{box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;font-weight:500;font-variant-numeric:tabular-nums}
+.scrub-badge span{white-space:nowrap}
+.scrub-dots{position:absolute;left:0;right:0;bottom:16%;display:flex;justify-content:center;gap:4px;pointer-events:none}
+.scrub-dots i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.scrubber-levels{position:absolute;left:0;right:0;bottom:2px;display:flex;justify-content:center;gap:18px;font-size:13px}
+.scrubber-levels button{padding:6px 2px;color:#b3b3b3;font-weight:500;transition:color .2s;background:none!important}
+.scrubber-levels button[aria-pressed=true]{color:#222;font-weight:600}
+
+/* Smaller phones: same design, slightly tighter vertical rhythm. */
+@media (max-height:740px){.scrubber{height:212px}}
+
+/* AI status pill under the top controls */
+.ai-status{position:absolute;z-index:600;top:calc(68px + var(--safe-top));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);padding:8px 14px;border-radius:999px;background:#faf9f6f2;border:1px solid #dce1dc;font-size:11px;color:#4b5b60;white-space:nowrap;box-shadow:0 2px 8px #243a4808}
+.ai-status button{text-decoration:underline;padding:0;font-size:11px}
+.ai-status.error{color:#815646}
+.ai-status.loading .ai-spark{display:grid;animation:spark 1.2s ease-in-out infinite;color:#d9463e}
+@keyframes spark{50%{transform:scale(.75) rotate(45deg);opacity:.6}}
+
+/* Marker colours per source */
+.pin.src-partner{background:#b8872b}
+.pin.src-host{background:var(--navy)}
+.pin.src-ai{background:#2c7657}
+.pin.src-community{background:#d9463e}
+.pin.src-cluster{background:var(--navy)}
+
+/* Event card additions */
+.source-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:500;letter-spacing:.3px;text-transform:uppercase;padding:3px 8px;border-radius:999px;margin:0 0 8px;background:var(--soft);color:#526268}
+.source-badge.src-partner{background:#f4ead6;color:#7d5c1c}
+.source-badge.src-ai{background:#e1efe7;color:#24654a}
+.source-badge.src-community{background:#fae3e1;color:#a4332c}
+.event-tags{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 12px}
+.event-tags span{font-size:11px;color:#526268;background:var(--soft);border-radius:6px;padding:4px 8px}
+.event-link{text-decoration:underline;text-underline-offset:3px}
+.ai-note{font-size:11px;line-height:1.6;color:var(--muted);margin-top:16px}
+
+/* AI tab */
+.proposals{display:flex;flex-direction:column;gap:12px}
+.proposal{border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--raised)}
+.proposal-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.proposal-top .source-badge{margin:0}
+.weather{font-size:11px;color:var(--muted)}
+.weather.risk{color:#815646}
+.proposal h3{font-size:18px;font-weight:500;letter-spacing:-.4px;margin:12px 0 6px}
+.proposal>p{font-size:13px;line-height:1.6;color:#526268}
+.proposal-when{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px!important}
+.proposal-progress{height:4px;border-radius:4px;background:var(--soft);margin:14px 0 12px;overflow:hidden}
+.proposal-progress span{display:block;height:100%;background:#d9463e;border-radius:4px;transition:width .3s}
+.proposal-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.proposal-actions small{color:var(--muted)}
+.proposal-actions button{flex:0 0 auto;padding:0 16px;height:40px}
+.scout-list{display:flex;flex-direction:column}
+.scout-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.scout-row strong{display:block;font-weight:500;font-size:13px}
+.scout-row small{color:var(--muted)}
+.scout-state{font-size:11px;color:var(--muted)}
+.scout-state.done{color:var(--green)}
+.scout-state.error{color:#815646}
+.legend p{display:flex;align-items:center;gap:12px;font-size:13px;padding:6px 0}
+.legend .pin{width:20px;height:20px}
+.page-inner .privacy-copy{font-size:11px;line-height:1.6;color:var(--muted);margin-top:16px}
+
+.map-tools{bottom:calc(var(--above-nav) + 236px)}
+@media(min-width:701px){.time-area{bottom:94px}.map-tools{bottom:340px}}
+.map-notice{top:calc(116px + var(--safe-top))}
