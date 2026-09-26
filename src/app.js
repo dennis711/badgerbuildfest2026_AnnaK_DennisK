@@ -1,32 +1,197 @@
-import {events,hosts,user,connections,demoNow} from './data.js';
-import {filterEvents,visibleConnections} from './logic.js';
+import {events,hosts,user,connections,demoNow,demoLocation,recommendationProfile} from './data.js';
+import {filterEvents} from './logic.js';
 import {icon} from './icons.js';
-const readState=()=>{try{return JSON.parse(localStorage.getItem('out-there-anna'))||{};}catch{return {};}};
+import {createMap} from './map-view.js';
+import {createTimeControl} from './time-control.js';
+import {renderEventCard,bindCardGestures} from './event-card.js';
+import {renderWallet} from './wallet.js';
+import {feedback} from './feedback.js';
+
+const $=selector=>document.querySelector(selector);
+function readState(){try{return JSON.parse(localStorage.getItem('out-there-anna'))||{};}catch{return {};}}
 const stored=readState();
-const state={date:new Date(demoNow),hour:null,mode:'All',interests:[],friends:false,tab:'Map',selected:null,saved:new Set(Array.isArray(stored.saved)?stored.saved:[]),joined:new Set(Array.isArray(stored.joined)?stored.joined:[]),week:0};
-let map,markers,toastTimer,filterOpener;
-const $=s=>document.querySelector(s);
-const time=e=>new Date(e.start).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-const day=d=>d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-const host=e=>hosts.find(h=>h.id===e.hostId);
+const asSet=value=>new Set(Array.isArray(value)?value:[]);
+const state={
+  date:new Date(demoNow),hour:demoNow.getHours(),mode:recommendationProfile.defaultMode,
+  interests:[],friends:false,tab:'Map',selected:null,cardState:'preview',
+  saved:asSet(stored.saved),joined:asSet(stored.joined),acknowledged:asSet(stored.acknowledged),
+  clock:demoNow.getTime(),location:{...demoLocation}
+};
+let map,timeControl,nearby=[],browseIds=[],toastTimer,modalOpener;
 const visible=()=>filterEvents(events,state,connections,user.id).sort((a,b)=>Number(user.interests.includes(b.interest))-Number(user.interests.includes(a.interest))||a.start-b.start);
-const persist=()=>{try{localStorage.setItem('out-there-anna',JSON.stringify({saved:[...state.saved],joined:[...state.joined]}));}catch{toast('Your changes will last for this session.');}};
-function toast(message){$('#toast').textContent=message;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),3600);}
-$('#app').innerHTML=`<main class="app"><header class="topbar"><a href="#" class="brand" aria-label="Out There home">out there<span class="brand-dot">®</span></a><span class="brand-note">A little less online. A little more out there.</span><button class="avatar" aria-label="Anna’s profile">A</button></header><section id="map-view"><div id="map" aria-label="Interactive map of Madison events"></div><div class="map-top"><button class="city">${icon('pin',17)} Madison ${icon('down',15)}</button><button class="filter-button">${icon('filter',18)} Filters <span id="filter-count"></span></button></div><aside class="discovery"><div class="eyebrow">YOUR CITY, IN GOOD COMPANY</div><h1>Find your kind<br>of outside.</h1><p>A few good reasons to put your phone away.</p><div class="mode-tabs" aria-label="Event mode">${['All','Social','Professional'].map(m=>`<button data-mode="${m}" class="${m==='All'?'active':''}">${m==='All'?'For you':m}</button>`).join('')}</div><div class="results-heading"><span id="results-count"></span><span class="small-label">CURATED FOR ANNA</span></div><div id="event-list"></div><div class="discovery-footer">${icon('sun',17)} Good things happen out there.</div></aside><div class="map-tools"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button><button id="locate" aria-label="Current location and now">${icon('location')}</button></div><div class="map-caption"><span class="navy-dot"></span> A place to be. A reason to go.</div><section class="timeline" aria-label="Explore events through time"><div class="timeline-heading"><div><span class="eyebrow">MAKE A LITTLE TIME</span><strong id="date-title"></strong></div><button id="now">${icon('location',15)} Here & now</button></div><div class="dates-wrap"><button id="prev-week" aria-label="Previous seven days">‹</button><div id="dates"></div><button id="next-week" aria-label="Next seven days">›</button></div><div class="timeline-bottom"><button id="hour-toggle">${icon('filter',14)} Explore by hour</button><span id="timeline-count"></span></div><div id="hours" hidden><div class="hour-labels"><span>Midnight</span><strong id="hour-value"></strong><span>9 PM</span></div><input id="hour-range" type="range" min="0" max="21" step="1" value="9" aria-label="Three-hour event window"><button id="all-day">Show all day</button></div></section><div id="event-card"></div></section><section id="placeholder" hidden></section><nav class="bottom-nav" aria-label="Primary navigation">${[['Map','map'],['My Events','calendar'],['Connections','people'],['Profile','user']].map(([label,i])=>`<button data-tab="${label}" class="${label==='Map'?'active':''}">${icon(i)}<span>${label}</span></button>`).join('')}</nav></main><div id="modal-root"></div><div id="toast" role="status" aria-live="polite"></div>`;
-function initMap(){if(!window.L){$('#map').innerHTML='<div class="map-error">The map could not load. You can still explore events in the list.</div>';return;}map=L.map('map',{zoomControl:false,attributionControl:true}).setView([43.078,-89.382],14);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19,subdomains:'abcd'}).addTo(map).on('tileerror',()=>{$('#map').classList.add('tile-error');});markers=L.layerGroup().addTo(map);const mobile=window.innerWidth<=700;map.fitBounds(visible().map(e=>[e.lat,e.lng]),{paddingTopLeft:mobile?[40,150]:[340,90],paddingBottomRight:mobile?[40,235]:[55,235],maxZoom:14});map.on('zoomend',renderPins);map.on('click',()=>{state.selected=null;renderCard();renderPins();});}
-function renderPins(){if(!map)return;markers.clearLayers();const groups=[];for(const e of visible()){const p=map.latLngToLayerPoint([e.lat,e.lng]);const group=groups.find(g=>p.distanceTo(g.point)<38);if(group)group.events.push(e);else groups.push({point:p,events:[e]});}for(const g of groups){const e=g.events[0],cluster=g.events.length>1;const marker=L.marker([e.lat,e.lng],{keyboard:true,title:cluster?`${g.events.length} events — zoom in`:e.title,icon:L.divIcon({className:'event-marker',html:`<span class="pin ${state.selected===e.id?'selected':''}">${cluster?g.events.length:icon('external',15)}</span>${!cluster&&state.selected===e.id?`<span class="pin-label">${e.title}</span>`:''}`,iconSize:[34,34],iconAnchor:[17,17]})}).addTo(markers);marker.on('click',()=>{if(cluster&&map.getZoom()<18)map.setView([e.lat,e.lng],map.getZoom()+2);else openEvent(e.id);});}}
-function eventRow(e){return `<button class="event-row" data-event="${e.id}"><span class="event-symbol">${icon(e.interest==='Sport'||e.interest==='Outdoor'?'sun':e.interest==='Design'||e.interest==='Tech'?'people':e.interest==='Wellness'?'sun':'calendar',21)}</span><span class="event-row-text"><span class="row-meta">${e.interest} <span>· ${time(e)}</span></span><strong>${e.title}</strong><span class="row-venue">${e.venue}</span></span>${icon('arrow',15)}</button>`;}
-function render(){const list=visible();$('#results-count').textContent=`${list.length} reasons to head out`;$('#timeline-count').textContent=`${list.length} ${list.length===1?'event':'events'} nearby`;$('#event-list').innerHTML=list.length?list.map(eventRow).join(''):'<div class="empty"><strong>A little quiet here.</strong><p>Try another day or broaden your filters.</p><button id="reset-filters">Reset filters</button></div>';$('#filter-count').textContent=(state.interests.length+(state.friends?1:0)+(state.mode!=='All'?1:0))||'';document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===state.mode);b.setAttribute('aria-pressed',b.dataset.mode===state.mode);});if(state.selected&&!list.some(e=>e.id===state.selected))state.selected=null;renderDates();renderPins();renderCard();}
-function renderDates(){$('#date-title').textContent=state.date.toDateString()===demoNow.toDateString()?'Today, September 26':state.date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});$('#dates').innerHTML=Array.from({length:7},(_,i)=>{const d=new Date(2026,8,24+state.week*7+i);return `<button data-date="${d.getTime()}" class="date ${d.toDateString()===state.date.toDateString()?'active':''}" aria-pressed="${d.toDateString()===state.date.toDateString()}"><span>${d.toLocaleDateString('en-US',{weekday:'short'})}</span><strong>${d.getDate()}</strong><i class="${events.some(e=>new Date(e.start).toDateString()===d.toDateString())?'has-events':''}"></i></button>`;}).join('');$('#hour-value').textContent=state.hour===null?'All day':`${new Date(2026,8,26,state.hour).toLocaleTimeString('en-US',{hour:'numeric'})} – ${new Date(2026,8,26,state.hour+3).toLocaleTimeString('en-US',{hour:'numeric'})}`;}
-function openEvent(id){state.selected=id;state.tab='Map';switchTab('Map');renderCard();renderPins();if(map){const e=events.find(e=>e.id===id);const point=map.project([e.lat,e.lng],map.getZoom());point.y+=window.innerWidth<=700?130:0;map.panTo(map.unproject(point,map.getZoom()),{animate:true});}}
-function renderCard(){const e=events.find(e=>e.id===state.selected);const root=$('#event-card');root.classList.toggle('open',!!e);if(!e){root.innerHTML='';return;}const h=host(e),friends=visibleConnections(e,connections,user.id),joined=state.joined.has(e.id),saved=state.saved.has(e.id);root.innerHTML=`<article class="event-detail" aria-label="${e.title}"><div class="sheet-handle"></div><div class="card-top"><span class="eyebrow">${e.interest} / ${e.mode}</span><div><button data-share="${e.id}" class="icon-button" aria-label="Share event">${icon('share',18)}</button><button id="close-card" class="icon-button" aria-label="Close event">${icon('close',19)}</button></div></div><h2>${e.title}</h2><button class="host-link" data-host="${h.id}">${h.name} <span class="verified" title="Verified host">${icon('check',12)}</span><span class="rating">★ ${h.rating}</span></button><div class="event-facts"><p>${icon('calendar',17)} ${day(new Date(e.start))} <span>·</span> ${time(e)}</p><p>${icon('pin',17)} ${e.venue}</p></div>${friends.length?`<div class="connections-going"><span class="mini-avatars">${friends.map(f=>`<i title="${f.name}">${f.name[0]}</i>`).join('')}</span><span>${friends.length} ${friends.length===1?'connection':'connections'} going</span></div>`:''}<p class="description">${e.description}</p><div class="event-conditions">${e.spots?`<span>${e.spots} spots left</span>`:''}${e.price?`<span>$${e.price}${e.external?' · External ticket':''}</span>`:'<span>Free to join</span>'}${e.age?`<span>${e.age}+</span>`:''}</div><div class="card-actions"><button class="save-button ${saved?'saved':''}" data-save="${e.id}" aria-pressed="${saved}">${icon('save',18)} ${saved?'Saved':'Save'}</button><button class="join-button ${joined?'joined':''}" data-join="${e.id}">${e.external?`Get ticket ${icon('external',18)}`:joined?`Joined ${icon('check',18)}`:`Join ${icon('external',18)}`}</button></div></article>`;}
-function switchTab(tab){state.tab=tab;$('#map-view').hidden=tab!=='Map';$('#placeholder').hidden=tab==='Map';document.querySelectorAll('[data-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.tab===tab);b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false');});if(tab==='Map'){setTimeout(()=>map?.invalidateSize(),0);return;}let body='';if(tab==='My Events'){const joined=events.filter(e=>state.joined.has(e.id)),saved=events.filter(e=>state.saved.has(e.id));body=`<p>Your next reason to head out.</p><h3>Joined <span>${joined.length}</span></h3>${joined.map(eventRow).join('')||'<p class="placeholder-note">Join an event on the map. It’ll be waiting here.</p>'}<h3>Saved <span>${saved.length}</span></h3>${saved.map(eventRow).join('')||'<p class="placeholder-note">Keep something in mind for later.</p>'}`;}else if(tab==='Connections'){body='<p>Real people. Real-life beginnings.</p><div class="privacy-note">'+icon('people',28)+'<h3>Made offline. Kept close.</h3><p>This space will hold your mutual connections after you meet in person.</p><small>No public profiles. No people browsing.</small></div>';}else{body=`<div class="profile-initial">A</div><p>Anna’s private space</p><div class="interest-tags">${user.interests.map(i=>`<span>${i}</span>`).join('')}</div><div class="privacy-note"><h3>A little about you. Just for you.</h3><p>Your full profile will only be visible to people you mutually connect with.</p><small>Demo profile · No account required</small></div>`;}$('#placeholder').innerHTML=`<div class="placeholder-inner"><span class="eyebrow">OUT THERE / ${tab.toUpperCase()}</span><h1>${tab==='Profile'?'Hello, Anna.':tab}</h1>${body}<button class="back-map" data-tab="Map">Explore the map ${icon('external',17)}</button></div>`;}
-function showFilters(){if(!$('.filter-sheet'))filterOpener=document.activeElement;$('#modal-root').innerHTML=`<div class="backdrop"><section class="filter-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-title"><div class="sheet-handle"></div><div class="modal-heading"><div><span class="eyebrow">FIND YOUR KIND OF THING</span><h2 id="filter-title">A little more you.</h2></div><button class="icon-button" data-close-modal aria-label="Close filters">${icon('close')}</button></div><h3>In the mood for</h3><div class="filter-modes">${['All','Social','Professional'].map(m=>`<button data-filter-mode="${m}" aria-pressed="${state.mode===m}">${m}</button>`).join('')}</div><h3>Your interests</h3><div class="interest-options">${['Wellness','Sport','Art','Food','Music','Design','Tech','Culture','Outdoor'].map(i=>`<button data-interest="${i}" aria-pressed="${state.interests.includes(i)}">${i}</button>`).join('')}</div><label class="friend-toggle"><span><strong>A familiar face</strong><small>Only events with visible connections</small></span><input id="friends" type="checkbox" ${state.friends?'checked':''}></label><p class="privacy-copy">Only connections who choose to share their attendance with you appear here.</p><div class="filter-actions"><button id="clear">Reset all</button><button id="apply" class="join-button">Show ${visible().length} events ${icon('arrow',17)}</button></div></section></div>`;$('.filter-sheet button').focus();}
-function closeModal(){$('#modal-root').innerHTML='';filterOpener?.focus();}
-function resetFilters(){state.mode='All';state.interests=[];state.friends=false;render();}
-document.addEventListener('click',async event=>{const b=event.target.closest('button,a.brand');if(!b)return;const d=b.dataset;if(d.tab)return switchTab(d.tab);if(b.matches('.brand')){event.preventDefault();return switchTab('Map');}if(b.matches('.avatar'))return switchTab('Profile');if(b.matches('.city')){map?.setView([43.078,-89.382],14);return toast('Exploring Madison, Wisconsin');}if(d.event)return openEvent(d.event);if(d.mode){state.mode=d.mode;state.selected=null;return render();}if(d.date){state.date=new Date(+d.date);state.selected=null;return render();}if(d.save){state.saved.has(d.save)?state.saved.delete(d.save):state.saved.add(d.save);persist();renderCard();return;}if(d.join){const e=events.find(e=>e.id===d.join);if(e.external)return toast('Demo ticket link · Tickets would open on the host’s website.');state.joined.has(e.id)?state.joined.delete(e.id):state.joined.add(e.id);persist();renderCard();toast(state.joined.has(e.id)?'You’re in. See you out there!':'You’ve left this event.');return;}if(d.share){const url=`${location.origin}/?event=${d.share}`;try{await navigator.clipboard.writeText(url);toast('Event link copied. Send it to someone you’d like to see.');}catch{toast('Demo share link: '+url);}return;}if(d.host)return toast(`${hosts.find(h=>h.id===d.host).name} · Verified host. Host pages are coming later.`);if(b.matches('.filter-button'))return showFilters();if(b.hasAttribute('data-close-modal'))return closeModal();if(d.filterMode){state.mode=d.filterMode;render();return showFilters();}if(d.interest){state.interests=state.interests.includes(d.interest)?state.interests.filter(i=>i!==d.interest):[...state.interests,d.interest];render();return showFilters();}switch(b.id){case'close-card':state.selected=null;render();break;case'prev-week':state.week--;renderDates();break;case'next-week':state.week++;renderDates();break;case'hour-toggle':$('#hours').hidden=!$('#hours').hidden;break;case'all-day':state.hour=null;render();break;case'clear':resetFilters();showFilters();break;case'reset-filters':resetFilters();break;case'apply':state.selected=null;render();closeModal();break;case'zoom-in':map?.zoomIn();break;case'zoom-out':map?.zoomOut();break;case'now':case'locate':state.date=new Date(demoNow);state.hour=8;state.week=0;state.selected=null;$('#hour-range').value=9;render();if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>{map?.setView([p.coords.latitude,p.coords.longitude],14);toast('Your location · Demo time: Sat, Sep 26, 8 AM');},()=>{map?.setView([43.078,-89.382],14);toast('Location unavailable. Back to Madison · Demo time: 8 AM');},{timeout:5000});break;}});
-document.addEventListener('change',e=>{if(e.target.id==='friends'){state.friends=e.target.checked;render();$('#apply').innerHTML=`Show ${visible().length} events ${icon('arrow',17)}`;}});
-$('#hour-range').addEventListener('input',e=>{state.hour=+e.target.value;state.selected=null;render();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();state.selected=null;render();}const modal=$('.filter-sheet');if(e.key==='Tab'&&modal){const items=[...modal.querySelectorAll('button,input')];if(e.shiftKey&&document.activeElement===items[0]){e.preventDefault();items.at(-1).focus();}else if(!e.shiftKey&&document.activeElement===items.at(-1)){e.preventDefault();items[0].focus();}}});
-$('#modal-root').addEventListener('click',e=>{if(e.target.classList.contains('backdrop'))closeModal();});
-initMap();render();const linked=events.find(e=>e.id===new URLSearchParams(location.search).get('event'));if(linked){state.date=new Date(linked.start);render();openEvent(linked.id);}
+const currentEvent=()=>events.find(event=>event.id===state.selected);
+function persist(){try{localStorage.setItem('out-there-anna',JSON.stringify({saved:[...state.saved],joined:[...state.joined],acknowledged:[...state.acknowledged]}));}catch{toast('Changes are kept for this session.');}}
+function toast(message){$('#toast').textContent=message;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),3500);}
+
+$('#app').innerHTML=`<main class="app">
+  <section id="map-view" aria-label="Discover nearby events"><div id="map" aria-label="Interactive event map"></div>
+    <div class="top-controls"><div class="mode-wrap"><button id="mode-button" aria-haspopup="menu" aria-expanded="false">Social ${icon('down',14)}</button><div id="mode-menu" role="menu" hidden><button role="menuitemradio" aria-checked="true" data-mode="Social">Social</button><button role="menuitemradio" aria-checked="false" data-mode="Professional">Professional</button></div></div><button id="filters" aria-label="Filters">${icon('filter',18)}<span id="filter-count"></span></button><button id="reset-personalization" hidden>Reset to For You</button></div>
+    <div class="map-tools"><button data-zoom="1" aria-label="Zoom in">+</button><button data-zoom="-1" aria-label="Zoom out">−</button><button id="locate" aria-label="Return to my location and now">${icon('me',23)}</button></div>
+    <div class="map-notice" id="map-notice" role="status" hidden></div>
+    <div class="time-area"><p id="empty-map" role="status" hidden>Nothing here yet</p><div id="time-control"></div></div>
+    <section id="event-card" aria-label="Event details" hidden></section>
+  </section>
+  <section id="page-view" hidden><div class="page-inner"></div></section>
+  <button class="profile-button" aria-label="Open Anna’s profile"><img src="${user.avatar}" alt="" width="40" height="40"></button>
+  <nav class="bottom-nav" aria-label="Primary navigation">${[['Map','map'],['Events','calendar'],['Connections','people'],['AI','ai']].map(([name,glyph])=>`<button data-tab="${name}" ${name==='Map'?'aria-current="page"':''}>${icon(glyph,22)}<span>${name}</span></button>`).join('')}</nav>
+</main><div id="modal-root"></div><div id="toast" role="status" aria-live="polite"></div>`;
+
+function updateEmpty(list=nearby){$('#empty-map').hidden=list.length>0||!!state.selected;}
+function renderCard(){
+  const event=currentEvent();
+  renderEventCard($('#event-card'),{event,host:hosts.find(h=>h.id===event?.hostId),state,connections,user,location:state.location,ids:browseIds});
+  updateEmpty();
+}
+function refresh({clearSelection=false}={}) {
+  const list=visible();
+  if(clearSelection){state.selected=null;state.cardState='preview';}
+  $('#mode-button').innerHTML=`${state.mode} ${icon('down',14)}`;
+  document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-checked',b.dataset.mode===state.mode));
+  const count=state.interests.length+Number(state.friends);
+  $('#filter-count').textContent=count||'';
+  $('#reset-personalization').hidden=!count&&state.mode===recommendationProfile.defaultMode;
+  // Opening a wallet/deep-linked event keeps its marker accessible even when
+  // its time or mode differs from the discovery selection.
+  const selected=currentEvent();
+  const mapEvents=selected&&!list.some(e=>e.id===selected.id)?[...list,selected]:list;
+  map?.update(mapEvents,state.selected);
+  timeControl?.update();renderCard();
+  if(state.tab==='Events')renderPage();
+}
+
+function openEvent(id,groupIds=[]) {
+  const event=events.find(e=>e.id===id);if(!event)return;
+  const source=state.tab==='Events'?events.filter(e=>state.joined.has(e.id)||state.saved.has(e.id)):nearby;
+  browseIds=[...new Set([...source.map(e=>e.id),...groupIds,id])];
+  state.selected=id;state.cardState='preview';
+  switchTab('Map');timeControl.collapse();refresh();requestAnimationFrame(()=>map?.focus(event));
+  $('#event-card').classList.remove('card-enter');void $('#event-card').offsetWidth;$('#event-card').classList.add('card-enter');
+}
+function closeCard(){state.selected=null;state.cardState='preview';refresh();}
+function browse(direction){
+  const index=browseIds.indexOf(state.selected)+direction;
+  if(index<0||index>=browseIds.length)return;
+  state.selected=browseIds[index];
+  const scroll=$('.card-scroll');if(scroll)scroll.scrollTop=0;
+  refresh();map?.focus(currentEvent());feedback('event-change');
+}
+function expandCard(value){state.cardState=value|| (state.cardState==='full'?'preview':'full');renderCard();}
+
+function switchTab(tab) {
+  state.tab=tab;$('#map-view').hidden=tab!=='Map';$('#page-view').hidden=tab==='Map';
+  document.querySelectorAll('[data-tab]').forEach(b=>{if(b.dataset.tab===tab)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+  if(tab==='Map')requestAnimationFrame(()=>map?.resize());else{timeControl?.collapse();renderPage();}
+}
+function renderPage(){
+  const root=$('.page-inner');
+  if(state.tab==='Events'){root.innerHTML=renderWallet(events,state);return;}
+  if(state.tab==='Connections')root.innerHTML=`<div class="page-heading"><h1>Connections</h1><p>People you’ve met. Plans still to come.</p></div><div class="quiet-placeholder">${icon('people',44)}<h2>It starts in person.</h2><p>This private space will hold your mutual connections after you meet.</p><small>No public profiles. No people browsing.</small></div>`;
+  else if(state.tab==='AI')root.innerHTML=`<div class="page-heading"><h1>A little help getting out.</h1><p>Your planning companion, coming later.</p></div><div class="quiet-placeholder">${icon('ai',36)}<h2>More possibilities. Less planning.</h2><p>One day, your interests and available time will help shape a few thoughtful suggestions.</p><small>No automatic plans or generated events.</small></div>`;
+  else root.innerHTML=`<div class="page-heading"><img class="profile-portrait" src="${user.avatar}" alt="Illustrated demo portrait of Anna"><h1>Anna</h1><p>Your private profile</p></div><h2 class="section-label">Your interests</h2><div class="interest-tags">${recommendationProfile.topics.map(i=>`<span>${i}</span>`).join('')}</div><div class="quiet-placeholder"><h2>Known by the people you know.</h2><p>Your full profile is only shared after a mutual connection.</p><small>Demo profile · Madison · September 26, 2026</small></div><button class="text-button" data-tab="Map">Back to the map ↗</button>`;
+}
+
+function openModal(content,label) {
+  if(!$('#modal-root').children.length)modalOpener=document.activeElement;
+  $('#modal-root').innerHTML=`<div class="backdrop"><section class="modal-sheet" role="dialog" aria-modal="true" aria-label="${label}">${content}</section></div>`;
+  $('.app').inert=true;
+  $('.modal-sheet button, .modal-sheet input')?.focus();
+}
+function closeModal(){
+  $('#modal-root').innerHTML='';$('.app').inert=false;
+  if(modalOpener?.isConnected)modalOpener.focus({preventScroll:true});
+}
+function showFilters() {
+  openModal(`<div class="modal-heading"><h2>Make it yours</h2><button class="icon-button" data-action="close-modal" aria-label="Close filters">${icon('close')}</button></div><p class="muted">A few interests. A familiar face.</p><h3>Interests</h3><div class="interest-options">${['Wellness','Sport','Art','Food','Music','Design','Tech','Culture','Outdoor'].map(i=>`<button data-interest="${i}" aria-pressed="${state.interests.includes(i)}">${i}</button>`).join('')}</div><label class="friend-toggle"><span><strong>With my connections</strong><small>Only shared attendance is visible.</small></span><input id="friends" type="checkbox" ${state.friends?'checked':''}></label><p class="privacy-copy">Only people you know who choose to share their plans with you appear here.</p><div class="filter-actions"><button data-action="reset-filters">Reset to For You</button><button class="join-button" data-action="apply-filters">Show ${visible().length} events</button></div>`,'Event filters');
+}
+function resetFilters(){state.interests=[];state.friends=false;state.mode=recommendationProfile.defaultMode;refresh({clearSelection:true});}
+function confirmLeave(event){
+  openModal(`<div class="modal-heading"><h2>Leave this event?</h2><button class="icon-button" data-action="close-modal" aria-label="Close confirmation">${icon('close')}</button></div><p>${event.title}</p><p class="muted">Your place will become available to someone else.</p><div class="confirmation-actions"><button class="save-button" data-action="close-modal">Stay joined</button><button class="join-button" data-leave="${event.id}">Leave event</button></div>`,'Leave this event?');
+}
+function goNow() {
+  state.date=new Date(demoNow);state.hour=demoNow.getHours();state.selected=null;
+  refresh();map?.home(state.location);timeControl.collapse();
+  if(navigator.geolocation)navigator.geolocation.getCurrentPosition(position=>{
+    state.location={lat:position.coords.latitude,lng:position.coords.longitude,isDemo:false};
+    map?.home(state.location);
+  },()=>toast('Using the demo location in Madison.'),{timeout:6000,maximumAge:60000});
+}
+
+timeControl=createTimeControl($('#time-control'),{state,now:demoNow,onChange:()=>refresh({clearSelection:true}),onHome:goNow});
+if(window.L)map=createMap({location:state.location,onSelect:openEvent,onMove:list=>{nearby=list;updateEmpty(list);},onPan:()=>timeControl.collapse(),onClose:closeCard,onError:message=>{$('#map-notice').textContent=message;$('#map-notice').hidden=false;}});
+else{$('#map-notice').textContent='The map library could not load. Reload to try again.';$('#map-notice').hidden=false;}
+bindCardGestures($('#event-card'),{getState:()=>state.cardState,onExpand:expandCard,onClose:closeCard,onBrowse:browse});
+
+document.addEventListener('click',async event=>{
+  const button=event.target.closest('button');
+  if(!event.target.closest('.mode-wrap')){$('#mode-menu').hidden=true;$('#mode-button').setAttribute('aria-expanded','false');}
+  if(!button)return;
+  const d=button.dataset;
+  if(d.tab)return switchTab(d.tab);
+  if(button.matches('.profile-button'))return switchTab('Profile');
+  if(d.mode){state.mode=d.mode;$('#mode-menu').hidden=true;$('#mode-button').setAttribute('aria-expanded','false');return refresh({clearSelection:true});}
+  if(d.event)return openEvent(d.event);
+  if(d.browse)return browse(+d.browse);
+  if(d.zoom)return map?.zoom(+d.zoom);
+  if(d.host)return toast(`${hosts.find(h=>h.id===d.host).name} · Verified host. Public host profiles are coming later.`);
+  if(d.save){state.saved.has(d.save)?state.saved.delete(d.save):state.saved.add(d.save);persist();renderCard();return;}
+  if(d.join){
+    const e=events.find(e=>e.id===d.join);
+    if(e.external)return toast('Demo ticket link · Tickets will open on the host’s website.');
+    if(state.joined.has(e.id))return confirmLeave(e);
+    state.joined.add(e.id);persist();renderCard();feedback('joined');return;
+  }
+  if(d.leave){state.joined.delete(d.leave);persist();closeModal();renderCard();return;}
+  if(d.acknowledge){state.acknowledged.add(d.acknowledge);persist();renderPage();return;}
+  if(d.share){
+    const e=events.find(e=>e.id===d.share),url=`${location.origin}/?event=${e.id}`;
+    try{if(navigator.share)await navigator.share({title:e.title,url});else{await navigator.clipboard.writeText(url);toast('Event link copied.');}}catch(error){if(error.name!=='AbortError')toast('Sharing is unavailable in this browser.');}return;
+  }
+  if(d.interest){
+    state.interests=state.interests.includes(d.interest)?state.interests.filter(i=>i!==d.interest):[...state.interests,d.interest];
+    button.setAttribute('aria-pressed',state.interests.includes(d.interest));refresh({clearSelection:true});
+    $('[data-action="apply-filters"]').textContent=`Show ${visible().length} events`;return;
+  }
+  switch(button.id){
+    case 'mode-button':$('#mode-menu').hidden=!$('#mode-menu').hidden;button.setAttribute('aria-expanded',!$('#mode-menu').hidden);if(!$('#mode-menu').hidden)$('#mode-menu button').focus();return;
+    case 'filters':return showFilters();
+    case 'reset-personalization':return resetFilters();
+    case 'locate':return goNow();
+  }
+  switch(d.action){
+    case 'close-card':return closeCard();
+    case 'expand':return expandCard();
+    case 'close-modal':return closeModal();
+    case 'apply-filters':return closeModal();
+    case 'reset-filters':resetFilters();return showFilters();
+    case 'more':return openModal(`<div class="modal-heading"><h2>Event options</h2><button class="icon-button" data-action="close-modal" aria-label="Close options">${icon('close')}</button></div><button class="report-button" data-action="report">Report this event</button>`,'Event options');
+    case 'report':closeModal();return toast('Demo report action · Nothing has been submitted.');
+  }
+});
+document.addEventListener('change',event=>{
+  if(event.target.id==='friends'){state.friends=event.target.checked;refresh({clearSelection:true});$('[data-action="apply-filters"]').textContent=`Show ${visible().length} events`;}
+});
+$('#modal-root').addEventListener('click',event=>{if(event.target.classList.contains('backdrop'))closeModal();});
+document.addEventListener('keydown',event=>{
+  const modal=$('.modal-sheet');
+  if(event.key==='Escape'){
+    if(modal)return closeModal();
+    if(!$('#mode-menu').hidden){$('#mode-menu').hidden=true;$('#mode-button').setAttribute('aria-expanded','false');$('#mode-button').focus();return;}
+    if(timeControl.isExpanded())return timeControl.collapse();
+    if(state.selected)return state.cardState==='full'?expandCard('preview'):closeCard();
+  }
+  if(event.key==='Tab'&&modal){
+    const items=[...modal.querySelectorAll('button,input,a')].filter(e=>!e.disabled);
+    if(event.shiftKey&&document.activeElement===items[0]){event.preventDefault();items.at(-1).focus();}
+    else if(!event.shiftKey&&document.activeElement===items.at(-1)){event.preventDefault();items[0].focus();}
+  }
+  if(event.target.closest('#mode-menu')&&['ArrowUp','ArrowDown'].includes(event.key)){
+    event.preventDefault();const items=[...$('#mode-menu').querySelectorAll('button')];items[(items.indexOf(document.activeElement)+1)%items.length].focus();
+  }
+});
+refresh();
+const linked=events.find(e=>e.id===new URLSearchParams(location.search).get('event'));
+if(linked){state.date=new Date(linked.start);state.hour=null;state.mode=linked.mode;refresh();openEvent(linked.id);}
+
+// Discovery time is separate from attendance lifecycle. Scrubbing tomorrow
+// must not move today's joined events into History. The demo clock is fixed.
+window.addEventListener('pageshow',()=>{if(state.tab==='Events')renderPage();});

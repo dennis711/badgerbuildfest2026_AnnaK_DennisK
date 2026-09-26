@@ -1,4 +1,8 @@
-export const user={id:'anna',name:'Anna',interests:['Design','Wellness','Sport','Food','Art','Tech']};
+export const user={id:'anna',name:'Anna',avatar:'/public/anna.svg',interests:['Design','Wellness','Sport','Food','Art','Tech']};
+// Intent and interests are independent. Future recommendations can consume these
+// optional signals without adding inferred people or automatically created events.
+export const recommendationProfile={userId:'anna',topics:['design','wellness','yoga','running','food','art','health tech'],defaultMode:'Social',routines:[],availability:[],followedHostIds:[],preferences:{}};
+export const demoLocation={lat:43.0773,lng:-89.3892,isDemo:true};
 export const connections=[{id:'julia',name:'Julia',visibleTo:['anna']},{id:'sofia',name:'Sofia',visibleTo:['anna']},{id:'ryan',name:'Ryan',visibleTo:['anna']}];
 export const hosts=[['run','Madison Run Club'],['design','Monona Design Collective'],['clay','Midwest Clay Studio'],['founder','StartingBlock Madison'],['yoga','Good Space Studio'],['art','Madison Museum of Contemporary Art'],['jazz','The Robin Room'],['tech','UW Health Innovation'],['dinner','The Neighborhood Table'],['pilates','Form & Field']].map(([id,name])=>({id,name,verified:true,rating:4.8}));
 export const demoNow=new Date('2026-09-26T08:00:00');
@@ -17,3 +21,8 @@ const rows=[
 ['design','Open Studio Evening','Design',29,18,2,43.074,-89.39,'Monona Design Collective','Step inside local creative studios and meet the people behind the work.',[],20,0]
 ];
 export const events=rows.map(([hostId,title,interest,day,hour,duration,lat,lng,venue,description,attendees,spots,price],i)=>({id:'event-'+i,hostId,title,interest,start:new Date(2026,8,day,hour).getTime(),end:new Date(2026,8,day,hour+duration).getTime(),lat,lng,venue,description,attendees,spots,price,mode:['design','founder','tech'].includes(hostId)?'Professional':'Social',external:hostId==='jazz',age:hostId==='clay'||hostId==='jazz'?21:null}));
+for (const event of events) {
+  event.status='published';
+  event.requirements=event.hostId==='run'?'All paces welcome · Comfortable running shoes':event.hostId==='yoga'?'All levels · Bring your own mat':null;
+  event.cover=event.hostId==='yoga'?{src:'/public/park-cover.svg',alt:'Illustrated lakeside park and walking path'}:null;
+}
