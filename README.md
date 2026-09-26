@@ -15,6 +15,22 @@ A map-first social discovery app. Open it and you see a quiet map with events pi
 
 For You ranking (`src/logic.js → fyScore`): interests + connections going + host reputation + sponsored boost − distance; ended events sink.
 
+## How Out There learns (adaptive layer)
+
+Observe first, ask only when useful. No long questionnaire and no separate chatbot.
+
+- **First run:** one screen, “What gets you out there?”, a few chips, then straight to the map.
+- **Map stays home:** a small greeting and “What are we feeling?” chips (Move, Meet people, Food, Something random) filter the map instantly. “Ask Out There” sits in the same row.
+- **One-tap moments:** a single contextual card at a time above the timeline (e.g. “Free today?”, “You’ve got some time tonight.”, outdoor priority, optional calendar).
+- **Why this:** every event card shows short reasons (interest, minutes away, fits your evening, partner event) and a “Not for me” button that teaches the ranking.
+- **What Out There knows:** Profile → a transparency page with a Personalization switch, every learned signal (edit or remove) and connected sources (calendar uses free/busy only).
+- **Ask Out There:** a small sheet with suggestions and free text. The app filters candidates with what it already knows; Claude (fast model) picks up to three and writes one sentence. Without a key a local parser answers. Results lead to View & join, Save or Invite.
+- **Demo stages:** Profile → “Prototype · how Out There grows” switches between **Day 1**, **Week 1** and **Later** (calendar connected, “You have a window Saturday afternoon” concierge card).
+
+Logic lives in `src/rhythm.js` (ranking, reasons, learned signals, request parsing), UI pieces in `src/moments.js`, the concierge endpoint in `server/ask.js`.
+
+**Demo script:** pick interests → Start exploring → tap *Move* → open a marker → see *Why this* → *Not for me* → Profile → *Week 1* → back to the map for the tonight / outdoor / calendar cards → Profile → *What Out There knows* → *Later* → map shows the Saturday window → *Ask Out There* → “Sarah and I have Saturday afternoon free.” → *View & join* → Join.
+
 ## Run it (laptop + phone)
 
 Requires Node.js 20 or later.
@@ -48,7 +64,7 @@ Change model, search count or cache time in `.env`.
 
 ## Time scrubber
 
-`src/time-scrubber.js` is a plain-JS port of our calendar widget design: spring physics, drag sideways to move, swipe up for Week and again for Month, swipe down to go back. Mouse wheel, arrow keys and the Day / Week / Month labels work too. Dots inside a pill show how many events that day, week or month has.
+`src/time-scrubber.js` is a plain-JS port of our calendar widget design (scaled down, in the marker colour, and collapsible with the chevron or a swipe down on Day): spring physics, drag sideways to move, swipe up for Week and again for Month, swipe down to go back. Mouse wheel, arrow keys and the Day / Week / Month labels work too. Dots inside a pill show how many events that day, week or month has.
 
 ## Structure
 

@@ -107,6 +107,11 @@ export function createMap({location, onSelect, onMove, onPan, onClose, onError})
     focus,
     resize() {map.invalidateSize();},
     home(value=location) {setLocation(value);map.setView([value.lat,value.lng],14,{animate:false});feedback('recenter');},
-    zoom(direction) {map.setZoom(map.getZoom()+direction);}
+    zoom(direction) {map.setZoom(map.getZoom()+direction);},
+    fit(events) {
+      if(!events.length)return;
+      const mobile=window.innerWidth<=700;
+      map.fitBounds(L.latLngBounds(events.map(e=>[e.lat,e.lng])),{paddingTopLeft:mobile?[48,200]:[80,200],paddingBottomRight:mobile?[48,260]:[80,260],maxZoom:15,animate:!matchMedia('(prefers-reduced-motion: reduce)').matches});
+    }
   };
 }

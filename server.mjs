@@ -6,6 +6,7 @@ import {resolve, extname, sep} from 'node:path';
 import {loadEnv, config} from './server/env.js';
 import {scrapeEvents} from './server/event-scraper.js';
 import {proposeEvents} from './server/proposals.js';
+import {askConcierge} from './server/ask.js';
 
 loadEnv();
 const settings = config();
@@ -21,7 +22,15 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-async function handleApi(url, res) {
+function readBody(req, limit = 64 * 1024) {
+  return new Promise((resolveBody, reject) => {
+    let data = '';
+    req.on('data', chunk => { data += chunk; if (data.length > limit) { reject(Object.assign(new Error('Body too large'), {status: 413})); req.destroy(); } });
+    req.on('end', () => { try { resolveBody(JSON.parse(data || '{}')); } catch { reject(Object.assign(new Error('Invalid JSON'), {status: 400})); } });
+  });
+}
+
+async function handleApi(url, res, req) {
   const q = url.searchParams;
   const lat = Number(q.get('lat')), lng = Number(q.get('lng'));
   try {
@@ -33,6 +42,9 @@ async function handleApi(url, res) {
       const result = await scrapeEvents({lat, lng, from: q.get('from'), to: q.get('to'), refresh: q.get('refresh') === '1'}, settings);
       console.log(`[events] ${result.city || `${lat},${lng}`} ${result.from}…${result.to}: ${result.events.length} events${result.cached ? ' (cache)' : ` in ${((Date.now() - started) / 1000).toFixed(0)}s`}`);
       return sendJson(res, 200, result);
+    }
+    if (url.pathname === '/api/ask' && req.method === 'POST') {
+      return sendJson(res, 200, await askConcierge(await readBody(req), settings));
     }
     if (url.pathname === '/api/proposals') {
       return sendJson(res, 200, await proposeEvents({lat, lng}, settings));
@@ -46,7 +58,7 @@ async function handleApi(url, res) {
 
 async function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname.startsWith('/api/')) return handleApi(url, res);
+  if (url.pathname.startsWith('/api/')) return handleApi(url, res, req);
   try {
     const pathname = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
     const file = resolve(root, '.' + pathname);

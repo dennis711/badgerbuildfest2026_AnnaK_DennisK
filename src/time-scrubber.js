@@ -6,13 +6,14 @@ import {feedback} from './feedback.js';
 
 const LEVELS = ['Day', 'Week', 'Month'];
 // Geometry per level: n* = normal pill, s* = selected pill, b = inner badge.
-// Values are the widget's originals (designed at 560px wide). On a narrow
-// phone the wide week/month pills shrink so the neighbours still peek in.
+// Values are the widget's originals scaled by SCALE so the map keeps room.
+// On a narrow phone the wide week/month pills shrink so neighbours peek in.
+const SCALE = 0.72;
 function geometry(width) {
-  const f = Math.min(1, Math.max(0.55, width / 580));
-  const wide = (nw, sw, nb, sb) => ({nw: nw * f, nh: 106, sw: sw * f, sh: 136, nb: Math.min(nb, nw * f - 24), nbh: 36, sb: Math.min(sb, sw * f - 28), sbh: 54, nfs: 15, sfs: 20});
+  const k = SCALE, f = Math.min(1, Math.max(0.55, width / (580 * k)));
+  const wide = (nw, sw, nb, sb) => ({nw: nw * k * f, nh: 106 * k, sw: sw * k * f, sh: 136 * k, nb: Math.min(nb * k, nw * k * f - 18), nbh: 36 * k, sb: Math.min(sb * k, sw * k * f - 20), sbh: 54 * k, nfs: 12, sfs: 15});
   return [
-    {nw: 60, nh: 106, sw: 80, sh: 136, nb: 36, nbh: 36, sb: 54, sbh: 54, nfs: 15, sfs: 20},
+    {nw: 60 * k, nh: 106 * k, sw: 80 * k, sh: 136 * k, nb: 36 * k, nbh: 36 * k, sb: 54 * k, sbh: 54 * k, nfs: 11, sfs: 15},
     wide(300, 340, 130, 180),
     wide(300, 340, 130, 170),
   ];
@@ -21,7 +22,7 @@ const RANGE = [400, 60, 14];
 const WEEKDAY = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const ITEM_TOP = 50; // distance from the top of the strip to the pills
+const ITEM_TOP = 32; // distance from the top of the strip to the pills
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const parseHex = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
@@ -31,7 +32,7 @@ const mix = (a, b, t) => {
 };
 const rgba = (hex, alpha) => `rgba(${parseHex(hex).join(',')},${alpha})`;
 
-export function createTimeScrubber(root, {today = new Date(), accent = '#d9463e', dimPast = true, countFor = () => 0, onChange = () => {}} = {}) {
+export function createTimeScrubber(root, {today = new Date(), accent = '#233c4b', dimPast = true, countFor = () => 0, onChange = () => {}} = {}) {
   const base = new Date(today);
   base.setHours(0, 0, 0, 0);
   const offset = (base.getDay() + 6) % 7; // weeks start on Monday
@@ -42,14 +43,32 @@ export function createTimeScrubber(root, {today = new Date(), accent = '#d9463e'
   window.addEventListener('resize', () => { G = geometry(root.clientWidth || window.innerWidth); render(); });
   root.classList.add('scrubber');
   root.innerHTML = `
-    <div class="scrubber-indicator" aria-hidden="true"></div>
-    <div class="scrubber-strip" tabindex="0" role="slider" aria-roledescription="time scrubber"></div>
-    <div class="scrubber-levels">${LEVELS.map((name, i) => `<button type="button" data-level="${i}">${name}</button>`).join('')}</div>`;
+    <button type="button" class="scrubber-collapsed" aria-label="Show the timeline" hidden><span></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg></button>
+    <div class="scrubber-body">
+      <div class="scrubber-indicator" aria-hidden="true"></div>
+      <div class="scrubber-strip" tabindex="0" role="slider" aria-roledescription="time scrubber"></div>
+      <div class="scrubber-levels">${LEVELS.map((name, i) => `<button type="button" data-level="${i}">${name}</button>`).join('')}<button type="button" class="scrubber-hide" aria-label="Hide the timeline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div>
+    </div>`;
   const strip = root.querySelector('.scrubber-strip');
+  const collapsedButton = root.querySelector('.scrubber-collapsed');
+  let collapsed = false;
+  function summary() {
+    const L = current(), i = Math.round(A['p' + L].t), {from, to} = rangeOf(L, i);
+    if (L === 0) return i === 0 ? `Today · ${from.toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'})}` : from.toLocaleDateString('en-US', {weekday: 'long', month: 'short', day: 'numeric'});
+    if (L === 1) return `Week ${isoWeek(from)} · ${MONTH_SHORT[from.getMonth()]} ${from.getDate()} – ${MONTH_SHORT[to.getMonth()]} ${to.getDate()}`;
+    return `${MONTH_LONG[from.getMonth()]} ${from.getFullYear()}`;
+  }
+  function setCollapsed(value) {
+    collapsed = value;
+    root.classList.toggle('collapsed', value);
+    collapsedButton.hidden = !value;
+    collapsedButton.querySelector('span').textContent = summary();
+    root.dispatchEvent(new CustomEvent('scrubber-toggle', {detail: {collapsed: value}}));
+  }
   const nodes = new Map();
 
   // ---------- calendar helpers ----------
-  const spacing = L => G[L].nw + 14;
+  const spacing = L => G[L].nw + 10;
   const current = () => Math.round(A.lv.t);
   const clamp = (L, v) => Math.max(-RANGE[L], Math.min(RANGE[L], v));
   const dayDate = i => { const d = new Date(base); d.setDate(d.getDate() + i); return d; };
@@ -130,6 +149,7 @@ export function createTimeScrubber(root, {today = new Date(), accent = '#d9463e'
     const range = rangeOf(L, i);
     strip.setAttribute('aria-valuetext', `${LEVELS[L]}: ${content(L, i).label} ${content(L, i).text}`);
     root.querySelectorAll('[data-level]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.level === L)));
+    collapsedButton.querySelector('span').textContent = summary();
     onChange({level: LEVELS[L].toLowerCase(), ...range});
   }
 
@@ -202,7 +222,7 @@ export function createTimeScrubber(root, {today = new Date(), accent = '#d9463e'
         }
         const circleBase = mix('#ffffff', '#e5e5e5', past);
         Object.assign(node.wrap.style, {
-          left: `calc(50% + ${x}px)`, top: `${ITEM_TOP - 8 * t2}px`, width: `${g.w}px`,
+          left: `calc(50% + ${x}px)`, top: `${ITEM_TOP - 6 * t2}px`, width: `${g.w}px`,
           opacity: isCenter ? 1 : fL, zIndex: Math.round(t * 10) + (L === dominant ? 20 : 0) + (isCenter ? 10 : 0),
         });
         Object.assign(node.label.style, {color: mix('#8a8a8a', '#3a3a3a', t2), opacity: isCenter ? fL : 1});
@@ -266,6 +286,7 @@ export function createTimeScrubber(root, {today = new Date(), accent = '#d9463e'
     } else if (d.mode === 'v') {
       const dy = e.clientY - d.y;
       if (dy < -30) setLevel(d.L + 1);
+      else if (dy > 30 && d.L === 0) setCollapsed(true); // swipe down on Day hides it
       else if (dy > 30) setLevel(d.L - 1);
     } else if (e.type === 'pointerup') {
       // A tap: select the pill under the finger.
@@ -305,9 +326,11 @@ export function createTimeScrubber(root, {today = new Date(), accent = '#d9463e'
     if (actions[e.key]) { e.preventDefault(); actions[e.key](); }
   });
   root.querySelector('.scrubber-levels').addEventListener('click', e => {
+    if (e.target.closest('.scrubber-hide')) return setCollapsed(true);
     const button = e.target.closest('[data-level]');
     if (button) setLevel(+button.dataset.level);
   });
+  collapsedButton.addEventListener('click', () => setCollapsed(false));
 
   render();
   notify();
@@ -321,6 +344,9 @@ export function createTimeScrubber(root, {today = new Date(), accent = '#d9463e'
       if (current() !== 0) { A.p0.t = A.p0.p = i; A.lv.t = 0; } else A.p0.t = i;
       notify();
     },
+    collapse() { if (!collapsed) setCollapsed(true); },
+    expand() { if (collapsed) setCollapsed(false); },
+    isCollapsed: () => collapsed,
     /** Re-read the event counts shown as dots inside the pills. */
     refreshCounts() { for (const node of nodes.values()) node.count = -1; render(); },
     destroy() { cancelAnimationFrame(raf); },

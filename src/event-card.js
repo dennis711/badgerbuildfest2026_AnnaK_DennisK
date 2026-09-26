@@ -23,7 +23,7 @@ function priceLabel(event) {
   return event.price ? `$${event.price}` : 'Free';
 }
 
-export function renderEventCard(root,{event,state,connections,user,location,ids}) {
+export function renderEventCard(root,{event,state,connections,user,location,ids,why=''}) {
   root.hidden=!event;
   root.classList.toggle('full',state.cardState==='full');
   root.classList.toggle('has-cover',!!event?.cover);
@@ -55,9 +55,10 @@ export function renderEventCard(root,{event,state,connections,user,location,ids}
         <button class="host-link" data-host="${esc(event.id)}">${esc(host.name)}${host.verified?`<span class="verified" title="Verified host">${icon('check',10)}</span>`:''}${host.rating?`<span class="rating">★ ${host.rating}</span>`:''}</button>
         <div class="event-facts"><p>${icon('calendar',16)}<span>${dateLabel(event.start)} · ${time}</span></p>
           <a href="${route}" target="_blank" rel="noopener noreferrer">${icon('pin',16)}<span>${esc(event.venue||event.address||'Location on map')}<span class="muted"> · ${distance} mi${full?' · Directions ↗':''}</span></span></a></div>
+        ${why}
         ${going?`<p class="connections-going">${icon('people',19)} ${going}</p>`:''}
         <div class="event-conditions">${facts}</div>
-        ${event.tags?.length?`<div class="event-tags">${event.tags.map(t=>`<span>${esc(t)}</span>`).join('')}</div>`:''}
+        ${full&&event.tags?.length?`<div class="event-tags">${event.tags.map(t=>`<span>${esc(t)}</span>`).join('')}</div>`:''}
         ${full?`${event.description?`<section class="about"><h3>About</h3><p>${esc(event.description)}</p></section>`:''}${event.requirements?`<section class="good-to-know"><h3>Good to know</h3><p>${esc(event.requirements)}</p></section>`:''}
         ${event.address?`<section class="good-to-know"><h3>Address</h3><p>${esc(event.address)}</p></section>`:''}
         ${link?`<section class="good-to-know"><h3>Event page</h3><p><a class="event-link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(new URL(link).hostname.replace(/^www\./,''))} ↗</a></p></section>`:''}

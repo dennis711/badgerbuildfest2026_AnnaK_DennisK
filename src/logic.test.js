@@ -9,13 +9,13 @@ const events = buildDemoEvents(today);
 const day = date => ({from: date, to: date, mode: 'For you', interests: [], friends: false});
 
 test('a day shows only events that overlap it', () => {
-  assert.equal(filterEvents(events, day(today), connections, 'anna').length, 6);
+  assert.equal(filterEvents(events, day(today), connections, 'anna').length, 9); // includes the Saturday-window demo events
   assert.equal(filterEvents(events, day(new Date(2027, 1, 1)), connections, 'anna').length, 0);
 });
 
 test('a week range includes every day of the week', () => {
   const week = {...day(new Date(2026, 8, 21)), to: new Date(2026, 8, 27)};
-  assert.equal(filterEvents(events, week, connections, 'anna').length, 10);
+  assert.equal(filterEvents(events, week, connections, 'anna').length, 14);
 });
 
 test('late events remain discoverable across midnight and cancellations are excluded', () => {
@@ -33,7 +33,7 @@ test('private attendance never qualifies as a visible connection', () => {
   const hidden = connections.map(c => ({...c, visibleTo: []}));
   assert.equal(visibleConnections(events[0], hidden, 'anna').length, 0);
   assert.equal(filterEvents(events, {...day(today), friends: true}, hidden, 'anna').length, 0);
-  assert.equal(filterEvents(events, {...day(today), friends: true}, connections, 'anna').length, 4);
+  assert.equal(filterEvents(events, {...day(today), friends: true}, connections, 'anna').length, 6);
 });
 
 test('For You ranks personal matches first and ended events last', () => {
