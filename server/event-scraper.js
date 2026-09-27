@@ -26,8 +26,8 @@ const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 const hash = text => [...text].reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381).toString(36);
 
 function describeRange(from, to) {
-  const format = value => new Date(`${value}T12:00`).toLocaleDateString('de-DE', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
-  return from === to ? format(from) : `Zeitraum von ${format(from)} bis ${format(to)}`;
+  const format = value => new Date(`${value}T12:00`).toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
+  return from === to ? format(from) : `the period from ${format(from)} to ${format(to)}`;
 }
 
 function guessCategory(raw) {
@@ -104,7 +104,7 @@ export async function scrapeEvents({lat, lng, from, to, refresh = false}, settin
   if (inFlight.has(key)) return inFlight.get(key);
 
   const job = (async () => {
-    const cityLine = [place.city, place.region, place.country].filter(Boolean).join(', ') || 'Stadt an diesen Koordinaten';
+    const cityLine = [place.city, place.region, place.country].filter(Boolean).join(', ') || 'the city at these coordinates';
     const response = await callClaude({
       apiKey: settings.apiKey,
       model: settings.model,
@@ -113,7 +113,7 @@ export async function scrapeEvents({lat, lng, from, to, refresh = false}, settin
         type: 'web_search_20250305', name: 'web_search', max_uses: settings.maxSearches,
         ...(place.city ? {user_location: {type: 'approximate', city: place.city, region: place.region || undefined, country: place.countryCode || undefined}} : {}),
       }],
-      messages: [{role: 'user', content: `Stadt: ${cityLine} (aktueller Standort ${lat.toFixed(4)}, ${lng.toFixed(4)})\nDatum: ${describeRange(from, to)} (${from}${from === to ? '' : ` bis ${to}`})`}],
+      messages: [{role: 'user', content: `City: ${cityLine} (current location ${lat.toFixed(4)}, ${lng.toFixed(4)})\nDate: ${describeRange(from, to)} (${from}${from === to ? '' : ` to ${to}`})`}],
     });
     const parsed = extractJson(finalText(response));
     const list = Array.isArray(parsed) ? parsed : parsed.events || [];

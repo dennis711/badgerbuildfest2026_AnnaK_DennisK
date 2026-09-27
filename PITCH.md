@@ -173,7 +173,7 @@ Out There zeigt nicht nur Events, es **lässt Events entstehen**.
 ## 7. Der AI-Event-Scraper (echte Events live)
 
 - Standort und Tag kommen standardmäßig aus der aktuellen Position und dem heutigen Datum. Die Stadt ermittelt OpenStreetMap Nominatim.
-- Euer **Original-Prompt** geht unverändert an Claude mit Websuche: „Du bist ein Event Scraper in der angegebenen Region / Stadt…“.
+- Unser **eigener Scraper-Prompt** geht an Claude mit Websuche: „You are an event scraper for the given region / city…“ (im Repo unter `prompts/event-scraper.md`, inhaltlich unverändert, für das Repo auf Englisch übersetzt).
 - **Ergebnis:** die Top 20 Events als JSON mit Koordinaten, Name, Veranstalter, Uhrzeit, Kosten, Teilnehmerlimit, Anmeldung ja/nein, Link und #Tags, zusätzlich Kategorie und Social/Professional.
 - **Prüfung:** Datum im Zeitraum, maximal ca. 60 km entfernt, nur http(s)-Links. Fehlende Koordinaten werden aus der Adresse berechnet.
 - **Zeitraum:** Die Zeitleiste bestimmt Tag, Woche (Mo–So) oder Monat, jeweils Top 20.

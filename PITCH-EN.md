@@ -173,7 +173,7 @@ Out There doesn't just display events — it **lets events come into being**.
 ## 7. The AI Event Scraper (real events, live)
 
 - Location and day default to the current position and today's date. OpenStreetMap Nominatim resolves the city.
-- Our **original prompt** goes to Claude with web search unchanged: "You are an event scraper in the given region / city…".
+- Our **own scraper prompt** goes to Claude with web search: "You are an event scraper for the given region / city…" (in the repo at `prompts/event-scraper.md`).
 - **Result:** the top 20 events as JSON with coordinates, name, organizer, time, cost, capacity, registration yes/no, link and hashtags, plus category and Social/Professional.
 - **Validation:** date within range, at most approx. 60 km away, http(s) links only. Missing coordinates are derived from the address.
 - **Time range:** the timeline decides day, week (Mon–Sun) or month, top 20 each.

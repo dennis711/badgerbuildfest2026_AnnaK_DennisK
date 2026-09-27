@@ -40,7 +40,7 @@ We had 19 hours left when we started this version, so every decision was about s
 
 **Stack:** plain ES modules. No framework, no build step, no bundler. Leaflet with a MapLibre vector basemap (POIs filtered out so the map stays calm), and a dependency-free Node server. It sounds old-fashioned; it meant zero minutes lost to tooling and instant reloads all night.
 
-**AI:** Claude Sonnet 5 with the web search tool powers the event scraper — we kept Dennis's original scraper prompt *verbatim* and only added a strict JSON contract on top, so the prompt we designed is literally what runs in production. Claude Haiku 4.5 writes the meetup invitations and picks the best matches in "Ask Out There". Open-Meteo supplies weather, Nominatim handles geocoding — both free, no keys.
+**AI:** Claude Sonnet 5 with the web search tool powers the event scraper — we kept the scraper prompt we had written ourselves and only added a strict JSON contract on top, so the prompt we designed is literally what runs in production. Claude Haiku 4.5 writes the meetup invitations and picks the best matches in "Ask Out There". Open-Meteo supplies weather, Nominatim handles geocoding — both free, no keys.
 
 **Time scrubber:** the calendar widget we designed became a hand-ported, spring-animated control. Drag sideways through days, swipe up for weeks, again for months. It drives everything: the day you're looking at is the day the AI searches for.
 
