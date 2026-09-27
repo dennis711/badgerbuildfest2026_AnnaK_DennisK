@@ -20,6 +20,9 @@ For You ranking (`src/logic.js → fyScore`): interests + connections going + ho
 Observe first, ask only when useful. No long questionnaire and no separate chatbot.
 
 - **First run:** one screen, “What gets you out there?”, a few chips, then straight to the map.
+- **Launch:** a ~3 s splash with the Out There figure and wordmark eases into the map (tap to skip).
+- **Filters live in Profile:** “Discovery & event filters” (show, categories, distance, timing, budget, connections). The map header stays clean; a small “n filters” chip appears only when filters are on.
+- **No empty-state card:** when nothing matches, the map stays calm with one quiet hint (“see the whole week”, “n more just outside this view”).
 - **Map stays home:** a small greeting and “What are we feeling?” chips (Move, Meet people, Food, Something random) filter the map instantly. “Ask Out There” sits in the same row.
 - **One-tap moments:** a single contextual card at a time above the timeline (e.g. “Free today?”, “You’ve got some time tonight.”, outdoor priority, optional calendar).
 - **Why this:** every event card shows short reasons (interest, minutes away, fits your evening, partner event) and a “Not for me” button that teaches the ranking.

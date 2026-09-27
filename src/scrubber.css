@@ -211,3 +211,38 @@
 #event-card:not(.full){height:min(380px,50dvh)}
 .bubble.bot .mini-event{padding:10px 12px}
 .bubble.bot .mini-actions button{height:32px}
+
+/* ---------- Clean header: greeting takes the top, avatar stays top-right ---------- */
+.top-stack{top:calc(18px + var(--safe-top))}
+.greeting-hello{padding-right:60px}
+.greeting-question{padding-right:60px}
+
+/* Stronger fade behind the timeline: dense at the bottom, fully transparent
+   well before the middle of the screen. */
+.time-area:before{
+  height:calc(100% + var(--above-nav) + 72px);
+  background:linear-gradient(to top,
+    rgba(245,244,240,1) 0%,
+    rgba(245,244,240,.98) calc(var(--above-nav) + 10%),
+    rgba(245,244,240,.9) 52%,
+    rgba(245,244,240,.62) 70%,
+    rgba(245,244,240,.28) 84%,
+    rgba(245,244,240,0) 100%);
+}
+.map-view-collapsed .time-area:before{opacity:.85;height:calc(var(--above-nav) + 120px)}
+.scrub-label{text-shadow:0 0 6px #f5f4f0}
+.scrubber-levels button{color:#9a9a9a}
+
+/* Ambient hint instead of an empty-state card */
+.map-hint{margin-bottom:8px;font-size:12px;color:#4d5c61;padding:6px 10px;border-radius:999px;background:none!important;text-decoration:underline;text-decoration-color:#4d5c6155;text-underline-offset:3px}
+
+/* Filters in Profile */
+.filters-section{margin-top:32px}
+.section-head{display:flex;justify-content:space-between;align-items:baseline}
+.section-head .section-label{margin-bottom:8px}
+.filters-section h3{margin:20px 0 10px;font-size:12px;color:var(--muted);font-weight:500}
+.filter-note{font-size:12px}
+.filters-section .segmented button{font-size:12px}
+.filters-section .interest-options button{border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:12px;min-height:40px}
+.filters-section .interest-options button[aria-pressed=true]{background:var(--navy);color:#fff;border-color:var(--navy)}
+.filter-chip{color:var(--navy);font-weight:500}

@@ -21,12 +21,13 @@ export function onboardingHTML(picks) {
   </div>`;
 }
 
-export function greetingHTML({hello, moodId, personalization, spotlight}) {
+export function greetingHTML({hello, moodId, personalization, spotlight, filterCount = 0}) {
   return `<p class="greeting-hello">${esc(hello)}</p>
     ${personalization ? '<p class="greeting-question">What are we feeling?</p>' : ''}
     <div class="mood-row" role="group" aria-label="What are we feeling?">
       <button class="chip ask-chip" data-action="open-ask">${icon('ai', 13)} Ask Out There</button>
       ${personalization ? MOODS.map(m => `<button class="chip" data-mood="${m.id}" aria-pressed="${moodId === m.id}">${esc(m.label)}</button>`).join('') : ''}
+      ${filterCount ? `<button class="chip filter-chip" data-tab="Profile" data-scroll="filters">${icon('filter', 13)} ${filterCount} ${filterCount === 1 ? 'filter' : 'filters'}</button>` : ''}
     </div>
     ${spotlight ? `<div class="spotlight-note">${esc(spotlight.label)} <button data-action="clear-spotlight" aria-label="Show everything again">${icon('close', 12)}</button></div>` : ''}`;
 }

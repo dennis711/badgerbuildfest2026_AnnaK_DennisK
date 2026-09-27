@@ -344,6 +344,8 @@ export function createTimeScrubber(root, {today = new Date(), accent = '#233c4b'
       if (current() !== 0) { A.p0.t = A.p0.p = i; A.lv.t = 0; } else A.p0.t = i;
       notify();
     },
+    /** 0 = Day, 1 = Week, 2 = Month */
+    setLevel(n) { if (collapsed) setCollapsed(false); setLevel(n); },
     collapse() { if (!collapsed) setCollapsed(true); },
     expand() { if (collapsed) setCollapsed(false); },
     isCollapsed: () => collapsed,

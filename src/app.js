@@ -21,12 +21,13 @@ const today = new Date();
 const store = createEventStore(buildDemoEvents(today));
 const state = {
   range: {level: 'day', from: today, to: today},
-  mode: recommendationProfile.defaultMode, interests: [], friends: false,
+  mode: stored.filters?.mode || recommendationProfile.defaultMode, interests: stored.filters?.interests || [], friends: !!stored.filters?.friends,
   tab: 'Map', selected: null, cardState: 'preview',
   saved: asSet(stored.saved), joined: asSet(stored.joined), acknowledged: asSet(stored.acknowledged),
   proposalJoins: asSet(stored.proposalJoins),
   clock: Date.now(), location: {...demoLocation}, locationResolved: false,
   proposals: [], proposalStatus: 'idle', aiEnabled: null,
+  timeOfDay: stored.filters?.timeOfDay || 'any', maxMinutes: stored.filters?.maxMinutes ?? null, maxPrice: stored.filters?.maxPrice ?? null,
   moodId: null, spotlight: null, card: null, cardTimer: null, autoCollapsed: false,
   windowIndex: 0, lastSaved: null, ask: {messages: [], busy: false},
 };
@@ -36,11 +37,22 @@ let map, scrubber, nearby = [], browseIds = [], toastTimer, modalOpener, fetchTi
 
 const query = () => ({...state.range, mode: state.mode, interests: state.interests, friends: state.friends});
 const ctx = () => ({user, connections, location: state.location, now: state.clock});
+// Discovery filters set in Profile: time of day, distance, budget.
+const TIME_OF_DAY = {any: [0, 24], morning: [5, 12], day: [12, 17], evening: [17, 24]};
+function passesFilters(e) {
+  const hour = new Date(e.start).getHours(), [a, b] = TIME_OF_DAY[state.timeOfDay] || TIME_OF_DAY.any;
+  if (hour < a || hour >= b) return false;
+  if (state.maxMinutes && minutesAway(state.location, e) > state.maxMinutes) return false;
+  if (state.maxPrice !== null && (e.price ?? 0) > state.maxPrice) return false;
+  return true;
+}
+const activeFilterCount = () => state.interests.length + Number(state.friends) + Number(state.mode !== recommendationProfile.defaultMode)
+  + Number(state.timeOfDay !== 'any') + Number(!!state.maxMinutes) + Number(state.maxPrice !== null);
 function visible() {
   let list = state.spotlight
     ? state.spotlight.ids.map(id => store.get(id)).filter(Boolean)
     : filterEvents(store.all(), query(), connections, user.id);
-  if (!state.spotlight) list = list.filter(e => e.end > state.clock); // what already ended isn't worth a pin
+  if (!state.spotlight) list = list.filter(e => e.end > state.clock && passesFilters(e)); // what already ended isn't worth a pin
   const mood = MOODS.find(m => m.id === state.moodId);
   if (mood && profile.personalization && !state.spotlight) list = list.filter(e => mood.match(e, profile));
   return rankWithRhythm(list, profile, ctx());
@@ -48,7 +60,7 @@ function visible() {
 const currentEvent = () => store.get(state.selected);
 function persist() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({saved: [...state.saved], joined: [...state.joined], acknowledged: [...state.acknowledged], proposalJoins: [...state.proposalJoins]}));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({saved: [...state.saved], joined: [...state.joined], acknowledged: [...state.acknowledged], proposalJoins: [...state.proposalJoins], filters: {mode: state.mode, interests: state.interests, friends: state.friends, timeOfDay: state.timeOfDay, maxMinutes: state.maxMinutes, maxPrice: state.maxPrice}}));
   } catch { toast('Changes are kept for this session.'); }
 }
 function toast(message) {
@@ -60,17 +72,11 @@ function toast(message) {
 
 $('#app').innerHTML = `<main class="app">
   <section id="map-view" aria-label="Discover nearby events"><div id="map" aria-label="Interactive event map"></div>
-    <div class="top-controls">
-      <div class="mode-wrap"><button id="mode-button" aria-haspopup="menu" aria-expanded="false">For you ${icon('down', 14)}</button>
-        <div id="mode-menu" role="menu" hidden>${['For you', 'Social', 'Professional'].map(m => `<button role="menuitemradio" aria-checked="${m === state.mode}" data-mode="${m}">${m}</button>`).join('')}</div></div>
-      <button id="filters" aria-label="Filters">${icon('filter', 18)}<span id="filter-count"></span></button>
-      <button id="reset-personalization" hidden>Reset to For You</button>
-    </div>
     <div class="top-stack"><div class="greeting" id="greeting"></div>
       <div class="ai-status" id="ai-status" role="status" hidden></div>
       <div class="map-notice" id="map-notice" role="status" hidden></div></div>
     <div class="map-tools"><button data-zoom="1" aria-label="Zoom in">+</button><button data-zoom="-1" aria-label="Zoom out">−</button><button id="locate" aria-label="Return to my location and today">${icon('me', 23)}</button></div>
-    <div class="time-area"><div id="context-slot" class="context-slot"></div><p id="empty-map" role="status" hidden>Nothing here yet</p><div id="time-control"></div></div>
+    <div class="time-area"><div id="context-slot" class="context-slot"></div><button id="map-hint" class="map-hint" hidden></button><div id="time-control"></div></div>
     <section id="event-card" aria-label="Event details" hidden></section>
   </section>
   <section id="page-view" hidden><div class="page-inner"></div></section>
@@ -106,11 +112,24 @@ function updateStatus() {
     el.className = 'ai-status error';
     el.hidden = false;
   } else el.hidden = true;
-  const empty = $('#empty-map');
-  empty.textContent = status?.status === 'loading' ? 'Looking for events…' : 'Nothing here yet';
 }
 
-function updateEmpty(list = nearby) { $('#empty-map').hidden = list.length > 0 || !!state.selected; }
+// No placeholder card when nothing matches: the map just stays calm, with at
+// most one quiet, tappable hint to widen the time window or the view.
+function updateEmpty(list = nearby) {
+  const hint = $('#map-hint');
+  if (!hint) return;
+  const all = visible(), loading = currentRangeStatus()?.status === 'loading';
+  let text = '', action = '';
+  if (state.selected || state.card || loading || list.length) text = '';
+  else if (all.length) { text = `${all.length} more just outside this view`; action = 'fit'; }
+  else if (state.range.level === 'day') { text = 'Quiet day · see the whole week'; action = 'week'; }
+  else if (state.range.level === 'week') { text = 'Quiet week · see the month'; action = 'month'; }
+  else if (activeFilterCount()) { text = 'Your filters are strict · adjust in Profile'; action = 'filters'; }
+  hint.hidden = !text;
+  hint.textContent = text;
+  hint.dataset.hint = action;
+}
 function renderCard() {
   const event = currentEvent();
   // The card already shows who's going, so the reasons skip that line.
@@ -121,11 +140,6 @@ function renderCard() {
 function refresh({clearSelection = false} = {}) {
   const list = visible();
   if (clearSelection) { state.selected = null; state.cardState = 'preview'; }
-  $('#mode-button').innerHTML = `${state.mode} ${icon('down', 14)}`;
-  document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-checked', b.dataset.mode === state.mode));
-  const count = state.interests.length + Number(state.friends);
-  $('#filter-count').textContent = count || '';
-  $('#reset-personalization').hidden = !count && state.mode === recommendationProfile.defaultMode;
   // A wallet or deep-linked event stays visible even outside the selected time.
   const selected = currentEvent();
   const mapEvents = selected && !list.some(e => e.id === selected.id) ? [...list, selected] : list;
@@ -290,6 +304,7 @@ function renderPage() {
   }
   const likes = profile.picks.map(id => INTEREST_CHIPS.find(c => c.id === id)?.label).filter(Boolean);
   root.innerHTML = `<div class="page-heading"><img class="profile-portrait" src="${user.avatar}" alt="Illustrated demo portrait of Anna"><h1>Anna</h1><p>Your private profile</p></div><h2 class="section-label">What gets you out there</h2><div class="interest-tags">${(likes.length ? likes : ['Nothing picked yet']).map(i => `<span>${esc(i)}</span>`).join('')}<button class="text-button" data-edit-signal="likes">Edit</button></div>
+    ${filtersHTML()}
     <button class="settings-link" data-tab="Knows"><span><strong>What Out There knows</strong><small>See and change what shapes your suggestions</small></span>${icon('arrow', 16)}</button>
     ${stageSwitcherHTML(profile.stage)}<div class="quiet-placeholder"><h2>Known by the people you know.</h2><p>Your full profile is only shared after a mutual connection.</p><small>${state.location.isDemo ? 'Demo location' : 'Current location'} · ${esc(state.location.city || 'Nearby')}</small></div><button class="text-button" data-tab="Map">Back to the map ↗</button>`;
 }
@@ -307,10 +322,10 @@ function closeModal() {
   if (modalOpener?.isConnected) modalOpener.focus({preventScroll: true});
   updateContextCard();
 }
-function showFilters() {
-  openModal(`<div class="modal-heading"><h2>Make it yours</h2><button class="icon-button" data-action="close-modal" aria-label="Close filters">${icon('close')}</button></div><p class="muted">A few interests. A familiar face.</p><h3>Interests</h3><div class="interest-options">${['Wellness', 'Sport', 'Art', 'Food', 'Music', 'Design', 'Tech', 'Culture', 'Outdoor'].map(i => `<button data-interest="${i}" aria-pressed="${state.interests.includes(i)}">${i}</button>`).join('')}</div><label class="friend-toggle"><span><strong>With my connections</strong><small>Only shared attendance is visible.</small></span><input id="friends" type="checkbox" ${state.friends ? 'checked' : ''}></label><p class="privacy-copy">Only people you know who choose to share their plans with you appear here.</p><div class="filter-actions"><button data-action="reset-filters">Reset to For You</button><button class="join-button" data-action="apply-filters">Show ${visible().length} events</button></div>`, 'Event filters');
+function resetFilters() {
+  Object.assign(state, {interests: [], friends: false, mode: recommendationProfile.defaultMode, timeOfDay: 'any', maxMinutes: null, maxPrice: null});
+  persist(); refresh({clearSelection: true}); scrubber.refreshCounts();
 }
-function resetFilters() { state.interests = []; state.friends = false; state.mode = recommendationProfile.defaultMode; refresh({clearSelection: true}); scrubber.refreshCounts(); }
 function confirmLeave(event) {
   openModal(`<div class="modal-heading"><h2>Leave this event?</h2><button class="icon-button" data-action="close-modal" aria-label="Close confirmation">${icon('close')}</button></div><p>${esc(event.title)}</p><p class="muted">Your place will become available to someone else.</p><div class="confirmation-actions"><button class="save-button" data-action="close-modal">Stay joined</button><button class="join-button" data-leave="${esc(event.id)}">Leave event</button></div>`, 'Leave this event?');
 }
@@ -356,7 +371,7 @@ function goNow() {
 function renderGreeting() {
   const el = $('#greeting');
   if (!el) return;
-  el.innerHTML = greetingHTML({hello: greeting(user.name), moodId: state.moodId, personalization: profile.personalization, spotlight: state.spotlight});
+  el.innerHTML = greetingHTML({hello: greeting(user.name), moodId: state.moodId, personalization: profile.personalization, spotlight: state.spotlight, filterCount: activeFilterCount()});
 }
 function selectMood(id) {
   state.moodId = state.moodId === id ? null : id;
@@ -605,10 +620,38 @@ async function submitAsk(text) {
   renderAsk();
 }
 
+// ---------- discovery filters (in Profile) ----------
+function setFilter(spec) {
+  const [key, raw] = spec.split(':');
+  const value = raw === 'null' ? null : ['maxMinutes', 'maxPrice'].includes(key) ? Number(raw) : raw;
+  state[key] = value;
+  persist();
+  refresh({clearSelection: true});
+  scrubber.refreshCounts();
+}
+function followHint(action) {
+  if (action === 'fit') return map?.fit(visible());
+  if (action === 'week') return scrubber.setLevel(1);
+  if (action === 'month') return scrubber.setLevel(2);
+  if (action === 'filters') { switchTab('Profile'); document.getElementById('filters')?.scrollIntoView({block: 'start'}); }
+}
+function filtersHTML() {
+  const seg = (key, options) => `<div class="segmented" role="group">${options.map(([value, label]) => `<button data-filter="${key}:${value}" aria-pressed="${String(state[key]) === String(value)}">${label}</button>`).join('')}</div>`;
+  return `<section id="filters" class="filters-section"><div class="section-head"><h2 class="section-label">Discovery &amp; event filters</h2>${activeFilterCount() ? '<button class="text-button" data-action="reset-filters">Reset</button>' : ''}</div>
+    <p class="muted filter-note">Applies to the map right away. ${visible().length} ${visible().length === 1 ? 'event matches' : 'events match'} ${esc(rangeLabel())}.</p>
+    <h3>Show</h3>${seg('mode', [['For you', 'For you'], ['Social', 'Social'], ['Professional', 'Professional']])}
+    <h3>Categories</h3><div class="interest-options">${['Wellness', 'Sport', 'Art', 'Food', 'Music', 'Design', 'Tech', 'Culture', 'Outdoor'].map(i => `<button data-interest="${i}" aria-pressed="${state.interests.includes(i)}">${i}</button>`).join('')}</div>
+    <h3>Distance</h3>${seg('maxMinutes', [['null', 'Any'], [15, '≤ 15 min'], [25, '≤ 25 min']])}
+    <h3>Timing</h3>${seg('timeOfDay', [['any', 'Any time'], ['morning', 'Mornings'], ['day', 'Daytime'], ['evening', 'Evenings']])}
+    <h3>Budget</h3>${seg('maxPrice', [['null', 'Any'], [0, 'Free'], [20, '≤ $20'], [40, '≤ $40']])}
+    <label class="friend-toggle"><span><strong>With my connections</strong><small>Only shared attendance is visible.</small></span><input id="friends" type="checkbox" ${state.friends ? 'checked' : ''}></label>
+  </section>`;
+}
+
 // ---------- startup ----------
 scrubber = createTimeScrubber($('#time-control'), {
   today,
-  countFor: range => filterEvents(store.all(), {...query(), ...range}, connections, user.id).filter(e => e.end > state.clock && !profile.notForMe.includes(e.id)).length,
+  countFor: range => filterEvents(store.all(), {...query(), ...range}, connections, user.id).filter(e => e.end > state.clock && passesFilters(e) && !profile.notForMe.includes(e.id)).length,
   onChange: range => {
     state.range = range;
     refresh({clearSelection: true});
@@ -626,12 +669,12 @@ fetch('/api/status').then(r => r.json()).then(s => { if (!s.ai) { state.aiEnable
 // ---------- interaction ----------
 document.addEventListener('click', async event => {
   const button = event.target.closest('button');
-  if (!event.target.closest('.mode-wrap')) { $('#mode-menu').hidden = true; $('#mode-button').setAttribute('aria-expanded', 'false'); }
   if (!button || button.closest('.scrubber')) return;
   const d = button.dataset;
-  if (d.tab) return switchTab(d.tab);
+  if (d.tab) { switchTab(d.tab); if (d.scroll) document.getElementById(d.scroll)?.scrollIntoView({behavior: 'smooth', block: 'start'}); return; }
   if (button.matches('.profile-button')) return switchTab('Profile');
-  if (d.mode) { state.mode = d.mode; $('#mode-menu').hidden = true; $('#mode-button').setAttribute('aria-expanded', 'false'); refresh({clearSelection: true}); scrubber.refreshCounts(); return; }
+  if (d.filter) return setFilter(d.filter);
+  if (d.hint) return followHint(d.hint);
   if (d.event) {
     if ($('.modal-sheet')) { closeModal(); const e = store.get(d.event); if (e) scrubber.setDate(new Date(e.start)); }
     return openEvent(d.event);
@@ -663,10 +706,7 @@ document.addEventListener('click', async event => {
   }
   if (d.interest) {
     state.interests = state.interests.includes(d.interest) ? state.interests.filter(i => i !== d.interest) : [...state.interests, d.interest];
-    button.setAttribute('aria-pressed', state.interests.includes(d.interest));
-    refresh({clearSelection: true});
-    scrubber.refreshCounts();
-    $('[data-action="apply-filters"]').textContent = `Show ${visible().length} events`;
+    persist(); refresh({clearSelection: true}); scrubber.refreshCounts();
     return;
   }
   if (d.mood) return selectMood(d.mood);
@@ -683,17 +723,13 @@ document.addEventListener('click', async event => {
   if (d.askInvite) return toast(`Sent to ${d.askInvite} in Out There. No numbers shared.`);
   if (d.askCalendar) return toast('Added to your calendar.');
   switch (button.id) {
-    case 'mode-button': $('#mode-menu').hidden = !$('#mode-menu').hidden; button.setAttribute('aria-expanded', !$('#mode-menu').hidden); if (!$('#mode-menu').hidden) $('#mode-menu button').focus(); return;
-    case 'filters': return showFilters();
-    case 'reset-personalization': return resetFilters();
     case 'locate': return goNow();
   }
   switch (d.action) {
     case 'close-card': return closeCard();
     case 'expand': return expandCard();
     case 'close-modal': return closeModal();
-    case 'apply-filters': return closeModal();
-    case 'reset-filters': resetFilters(); return showFilters();
+    case 'reset-filters': resetFilters(); return toast('Filters cleared.');
     case 'retry': return scheduleFetch({refresh: true, delay: 0});
     case 'refresh-ai': state.aiEnabled = null; scheduleFetch({refresh: true, delay: 0}); return;
     case 'reload-proposals': state.proposalStatus = 'idle'; return loadProposals();
@@ -710,7 +746,7 @@ document.addEventListener('click', async event => {
 });
 document.addEventListener('change', event => {
   if (event.target.id === 'personalization') { setProfile({...profile, personalization: event.target.checked}); state.moodId = null; refresh(); return; }
-  if (event.target.id === 'friends') { state.friends = event.target.checked; refresh({clearSelection: true}); scrubber.refreshCounts(); $('[data-action="apply-filters"]').textContent = `Show ${visible().length} events`; }
+  if (event.target.id === 'friends') { state.friends = event.target.checked; persist(); refresh({clearSelection: true}); scrubber.refreshCounts(); }
 });
 $('#modal-root').addEventListener('click', event => { if (event.target.classList.contains('backdrop')) closeModal(); });
 document.addEventListener('submit', event => {
@@ -723,7 +759,6 @@ document.addEventListener('keydown', event => {
   const modal = $('.modal-sheet');
   if (event.key === 'Escape') {
     if (modal) return closeModal();
-    if (!$('#mode-menu').hidden) { $('#mode-menu').hidden = true; $('#mode-button').setAttribute('aria-expanded', 'false'); $('#mode-button').focus(); return; }
     if (state.selected) return state.cardState === 'full' ? expandCard('preview') : closeCard();
   }
   if (event.key === 'Tab' && modal) {
@@ -731,14 +766,9 @@ document.addEventListener('keydown', event => {
     if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1).focus(); }
     else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0].focus(); }
   }
-  if (event.target.closest('#mode-menu') && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
-    event.preventDefault();
-    const items = [...$('#mode-menu').querySelectorAll('button')];
-    items[(items.indexOf(document.activeElement) + (event.key === 'ArrowUp' ? items.length - 1 : 1)) % items.length].focus();
-  }
 });
 refresh();
-if (!profile.onboarded) showOnboarding(); else scheduleCard(2500);
+if (!profile.onboarded) showOnboarding(); else scheduleCard(3800); // after the launch splash
 const linked = store.get(new URLSearchParams(location.search).get('event'));
 if (linked) { scrubber.setDate(new Date(linked.start)); openEvent(linked.id); }
 window.addEventListener('pageshow', () => { if (state.tab === 'Events') renderPage(); });
