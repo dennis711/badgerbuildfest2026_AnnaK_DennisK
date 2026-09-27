@@ -14,6 +14,7 @@ const SOURCE = {
   host: {label: 'Verified host', className: 'src-host'},
   ai: {label: 'Found by AI on the web', className: 'src-ai'},
   community: {label: 'Community meetup · AI matched', className: 'src-community'},
+  flex: {label: 'Time open · Out There finds the slot', className: 'src-flex'},
 };
 export const sourceInfo = event => SOURCE[event.source] || SOURCE.host;
 
@@ -23,7 +24,7 @@ function priceLabel(event) {
   return event.price ? `$${event.price}` : 'Free';
 }
 
-export function renderEventCard(root,{event,state,connections,user,location,ids,why=''}) {
+export function renderEventCard(root,{event,state,connections,user,location,ids,why='',extra=''}) {
   root.hidden=!event;
   root.classList.toggle('full',state.cardState==='full');
   root.classList.toggle('has-cover',!!event?.cover);
@@ -37,7 +38,7 @@ export function renderEventCard(root,{event,state,connections,user,location,ids,
   const index=ids.indexOf(event.id), ended=event.end<=state.clock, cancelled=event.status==='cancelled';
   const scroll=root.querySelector('.card-scroll')?.scrollTop || 0;
   const source=sourceInfo(event), link=safeUrl(event.url);
-  const time=event.timeKnown===false?'Time to be confirmed':`${timeLabel(event.start)}${full?`–${timeLabel(event.end)}`:''}`;
+  const time=event.status==='proposed'?'Time to be decided together':event.timeKnown===false?'Time to be confirmed':`${timeLabel(event.start)}${full?`–${timeLabel(event.end)}`:''}`;
   const facts=[
     cancelled?'<span class="cancelled-label">Cancelled</span>':ended?'<span>Event ended</span>':'',
     event.spots!==null&&event.spots!==undefined?`<span>${event.source==='ai'?`Limited to ${esc(event.spots)}`:`${esc(event.spots)} spots left`}</span>`:event.source==='ai'?'<span>No limit listed</span>':'',
@@ -55,6 +56,7 @@ export function renderEventCard(root,{event,state,connections,user,location,ids,
         <button class="host-link" data-host="${esc(event.id)}">${esc(host.name)}${host.verified?`<span class="verified" title="Verified host">${icon('check',10)}</span>`:''}${host.rating?`<span class="rating">★ ${host.rating}</span>`:''}</button>
         <div class="event-facts"><p>${icon('calendar',16)}<span>${dateLabel(event.start)} · ${time}</span></p>
           <a href="${route}" target="_blank" rel="noopener noreferrer">${icon('pin',16)}<span>${esc(event.venue||event.address||'Location on map')}<span class="muted"> · ${distance} mi${full?' · Directions ↗':''}</span></span></a></div>
+        ${extra}
         ${why}
         ${going?`<p class="connections-going">${icon('people',19)} ${going}</p>`:''}
         <div class="event-conditions">${facts}</div>
@@ -66,7 +68,7 @@ export function renderEventCard(root,{event,state,connections,user,location,ids,
         ${event.external?'<section class="ticket-info"><h3>Tickets</h3><p>A ticket from the host is required. Saving this event does not reserve a place.</p></section>':''}<div class="full-links"><button data-share="${esc(event.id)}">${icon('share',18)} Share event</button><button class="icon-button" data-action="more" aria-label="More event options">${icon('more',20)}</button></div>`:''}
       </div>
     </div>
-    <footer class="card-footer"><div class="card-actions"><button class="save-button ${saved?'saved':''}" data-save="${esc(event.id)}" aria-pressed="${saved}">${icon('save',18)} ${saved?'Saved':'Save'}</button><button class="join-button ${joined?'joined':''}" data-join="${esc(event.id)}" ${cancelled||ended?'disabled':''}>${cancelled?'Cancelled':ended?'Ended':event.external?`Get ticket ${icon('external',16)}`:joined?`Joined ${icon('check',16)}`:'Join'}</button></div>
+    <footer class="card-footer"><div class="card-actions"><button class="save-button ${saved?'saved':''}" data-save="${esc(event.id)}" aria-pressed="${saved}">${icon('save',18)} ${saved?'Saved':'Save'}</button><button class="join-button ${joined?'joined':''}" data-join="${esc(event.id)}" ${cancelled||ended?'disabled':''}>${cancelled?'Cancelled':ended?'Ended':event.status==='proposed'?(joined?`I’m in ${icon('check',16)}`:'I’m in'):event.external?`Get ticket ${icon('external',16)}`:joined?`Joined ${icon('check',16)}`:'Join'}</button></div>
       <div class="card-browse"><button data-browse="-1" aria-label="Previous event" ${index<=0?'disabled':''}>‹</button><button data-action="expand">${full?'Show less':'Full event'} ${icon(full?'down':'external',12)}</button><span>${index+1} of ${ids.length}</span><button data-browse="1" aria-label="Next event" ${index<0||index>=ids.length-1?'disabled':''}>›</button></div>
     </footer>
   </article>`;

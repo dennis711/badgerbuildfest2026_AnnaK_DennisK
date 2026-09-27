@@ -1,7 +1,8 @@
 import {buildDemoEvents, user, connections, demoLocation, recommendationProfile, windowSaturday} from './data.js';
 import {filterEvents, parseLocal} from './logic.js';
 import {loadProfile, saveProfile, defaultProfile, applyStage, rankWithRhythm, reasonsFor, learnedSignals, removeSignal, categoriesOf, parseAsk, askLocal, greeting, minutesAway, MOODS, INTEREST_CHIPS, STAGES, knowsHabits} from './rhythm.js';
-import {onboardingHTML, greetingHTML, whyThisHTML, contextCardHTML, knowsPageHTML, editSheetHTML, askSheetHTML, stageSwitcherHTML} from './moments.js';
+import {buildFlexEvent, resolveFlex, flexMatches, FLEX_SLOTS, consensus, interestedCount} from './flex.js';
+import {onboardingHTML, flexSectionHTML, greetingHTML, whyThisHTML, contextCardHTML, knowsPageHTML, editSheetHTML, askSheetHTML, stageSwitcherHTML} from './moments.js';
 import {icon} from './icons.js';
 import {esc} from './escape.js';
 import {createMap} from './map-view.js';
@@ -28,10 +29,15 @@ const state = {
   clock: Date.now(), location: {...demoLocation}, locationResolved: false,
   proposals: [], proposalStatus: 'idle', aiEnabled: null,
   timeOfDay: stored.filters?.timeOfDay || 'any', maxMinutes: stored.filters?.maxMinutes ?? null, maxPrice: stored.filters?.maxPrice ?? null,
+  flexChoice: stored.flexChoice || null, flexResolved: !!stored.flexResolved,
   moodId: null, spotlight: null, card: null, cardTimer: null, autoCollapsed: false,
   windowIndex: 0, lastSaved: null, ask: {messages: [], busy: false},
 };
 let profile = loadProfile();
+// The AI-coordinated "?" event (canoe at Hoofers, next Monday).
+const flexBase = buildFlexEvent(today);
+const flexEvent = () => (state.flexResolved ? resolveFlex(flexBase, state.flexChoice) : flexBase);
+store.add(flexEvent());
 const setProfile = next => { profile = next; saveProfile(profile); };
 let map, scrubber, nearby = [], browseIds = [], toastTimer, modalOpener, fetchTimer;
 
@@ -53,6 +59,7 @@ function visible() {
     ? state.spotlight.ids.map(id => store.get(id)).filter(Boolean)
     : filterEvents(store.all(), query(), connections, user.id);
   if (!state.spotlight) list = list.filter(e => e.end > state.clock && passesFilters(e)); // what already ended isn't worth a pin
+  list = list.filter(e => !e.flex || flexMatches(profile, state));
   const mood = MOODS.find(m => m.id === state.moodId);
   if (mood && profile.personalization && !state.spotlight) list = list.filter(e => mood.match(e, profile));
   return rankWithRhythm(list, profile, ctx());
@@ -60,7 +67,7 @@ function visible() {
 const currentEvent = () => store.get(state.selected);
 function persist() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({saved: [...state.saved], joined: [...state.joined], acknowledged: [...state.acknowledged], proposalJoins: [...state.proposalJoins], filters: {mode: state.mode, interests: state.interests, friends: state.friends, timeOfDay: state.timeOfDay, maxMinutes: state.maxMinutes, maxPrice: state.maxPrice}}));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({saved: [...state.saved], joined: [...state.joined], acknowledged: [...state.acknowledged], proposalJoins: [...state.proposalJoins], flexChoice: state.flexChoice, flexResolved: state.flexResolved, filters: {mode: state.mode, interests: state.interests, friends: state.friends, timeOfDay: state.timeOfDay, maxMinutes: state.maxMinutes, maxPrice: state.maxPrice}}));
   } catch { toast('Changes are kept for this session.'); }
 }
 function toast(message) {
@@ -133,8 +140,25 @@ function updateEmpty(list = nearby) {
 function renderCard() {
   const event = currentEvent();
   // The card already shows who's going, so the reasons skip that line.
-  const why = event && profile.personalization ? whyThisHTML(reasonsFor(event, profile, ctx()).filter(r => !/is going|connections interested/.test(r)), event.id) : '';
-  renderEventCard($('#event-card'), {event, state, connections, user, location: state.location, ids: browseIds, why});
+  let why = event && profile.personalization ? whyThisHTML(reasonsFor(event, profile, ctx()).filter(r => !/is going|connections interested/.test(r)), event.id) : '';
+  let extra = '';
+  if (event?.flex) {
+    const mine = state.flexChoice, joined = state.joined.has(event.id);
+    why = whyThisHTML([
+      '2 connections want to paddle',
+      profile.picks.includes('outdoors') ? 'You like being outside' : 'You like movement',
+      `${interestedCount(event, joined && mine)} people interested`,
+      `${minutesAway(state.location, event)} min away`,
+    ], event.id);
+    const slots = FLEX_SLOTS.map(s => ({...s, votes: (event.votes[s.id] || 0) + (joined && mine === s.id ? 1 : 0)}));
+    const locked = new Date(event.start);
+    extra = flexSectionHTML(event, {
+      slots, mine, joined, count: interestedCount(event, joined && mine),
+      dayLabel: locked.toLocaleDateString('en-US', {weekday: 'long', month: 'short', day: 'numeric'}),
+      lockedLabel: `${locked.toLocaleDateString('en-US', {weekday: 'long'})}, ${timeLabel(event.start)}`,
+    });
+  }
+  renderEventCard($('#event-card'), {event, state, connections, user, location: state.location, ids: browseIds, why, extra});
   updateEmpty();
 }
 function refresh({clearSelection = false} = {}) {
@@ -651,14 +675,14 @@ function filtersHTML() {
 // ---------- startup ----------
 scrubber = createTimeScrubber($('#time-control'), {
   today,
-  countFor: range => filterEvents(store.all(), {...query(), ...range}, connections, user.id).filter(e => e.end > state.clock && passesFilters(e) && !profile.notForMe.includes(e.id)).length,
+  countFor: range => filterEvents(store.all(), {...query(), ...range}, connections, user.id).filter(e => e.end > state.clock && passesFilters(e) && !profile.notForMe.includes(e.id) && (!e.flex || flexMatches(profile, state))).length,
   onChange: range => {
     state.range = range;
     refresh({clearSelection: true});
     if (state.locationResolved) scheduleFetch();
   },
 });
-if (window.L) map = createMap({location: state.location, onSelect: openEvent, onMove: list => { nearby = list; updateEmpty(list); }, onPan: () => $('#greeting').classList.add('compact'), onClose: closeCard, onError: message => { $('#map-notice').textContent = message; $('#map-notice').hidden = false; }});
+if (window.L) map = createMap({location: state.location, onSelect: openEvent, onMove: list => { nearby = list; updateEmpty(list); }, onPan: () => {}, onClose: closeCard, onError: message => { $('#map-notice').textContent = message; $('#map-notice').hidden = false; }});
 else { $('#map-notice').textContent = 'The map library could not load. Reload to try again.'; $('#map-notice').hidden = false; }
 $('#time-control').addEventListener('scrubber-toggle', e => $('#map-view').classList.toggle('map-view-collapsed', e.detail.collapsed));
 bindCardGestures($('#event-card'), {getState: () => state.cardState, onExpand: expandCard, onClose: closeCard, onBrowse: browse});
@@ -691,8 +715,17 @@ document.addEventListener('click', async event => {
     else { state.saved.add(d.save); state.lastSaved = store.get(d.save); setProfile({...profile, saves: profile.saves + 1}); }
     persist(); renderCard(); if ($('.ask-thread')) renderAsk(); return;
   }
+  if (d.flexSlot) {
+    state.flexChoice = d.flexSlot;
+    if (!state.joined.has('flex-canoe')) { state.joined.add('flex-canoe'); toast('You’re in. Out There will pick the time that works for most people.'); feedback('joined'); }
+    persist(); renderCard(); return;
+  }
   if (d.join) {
     const e = store.get(d.join);
+    if (e.status === 'proposed') {
+      if (state.joined.has(e.id)) { state.joined.delete(e.id); state.flexChoice = null; persist(); renderCard(); return toast('You’re out. No hard feelings.'); }
+      if (!state.flexChoice) { $('.flex-slots')?.scrollIntoView({behavior: 'smooth', block: 'center'}); $('.flex-slots')?.classList.add('nudge'); setTimeout(() => $('.flex-slots')?.classList.remove('nudge'), 700); return toast('Pick the time that works for you.'); }
+    }
     if (e.external) return toast('Demo ticket link · Tickets will open on the host’s website.');
     if (state.joined.has(e.id)) return confirmLeave(e);
     state.joined.add(e.id); persist(); renderCard(); feedback('joined'); return;
@@ -742,6 +775,20 @@ document.addEventListener('click', async event => {
     case 'disconnect-calendar': setProfile({...profile, calendar: false}); toast('Calendar disconnected.'); refresh(); return;
     case 'reset-rhythm': setProfile({...defaultProfile(), onboarded: true, picks: profile.picks, stage: profile.stage}); toast('Fresh start. Your interests stay.'); refresh(); return;
     case 'replay-onboarding': return showOnboarding();
+    case 'flex-resolve': {
+      state.flexResolved = true;
+      if (!state.flexChoice) state.flexChoice = 'any';
+      state.joined.add('flex-canoe');
+      const resolved = flexEvent();
+      store.add(resolved);
+      persist();
+      scrubber.setDate(new Date(resolved.start));
+      state.selected = resolved.id;
+      refresh();
+      map?.focus(resolved);
+      return toast(`Confirmed: ${new Date(resolved.start).toLocaleDateString('en-US', {weekday: 'long'})}, ${timeLabel(resolved.start)}. Everyone who joined was notified.`);
+    }
+    case 'flex-reset': state.flexResolved = false; store.add(flexEvent()); persist(); refresh(); return toast('Back to “time open”.');
   }
 });
 document.addEventListener('change', event => {

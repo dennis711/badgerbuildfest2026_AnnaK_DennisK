@@ -79,7 +79,7 @@ export function createMap({location, onSelect, onMove, onPan, onClose, onError})
       const event=group.events[0], cluster=group.events.length>1;
       const lat=group.events.reduce((n,e)=>n+e.lat,0)/group.events.length;
       const lng=group.events.reduce((n,e)=>n+e.lng,0)/group.events.length;
-      const marker=L.marker([lat,lng],{title:cluster?`${group.events.length} nearby events`:event.title,icon:L.divIcon({className:'event-marker',html:`<span class="pin src-${cluster?'cluster':event.source} ${event.id===selected?'selected':''}">${cluster?group.events.length:'<i></i>'}</span>`,iconSize:[48,48],iconAnchor:[24,24]})}).addTo(layer);
+      const marker=L.marker([lat,lng],{title:cluster?`${group.events.length} nearby events`:event.title,icon:L.divIcon({className:'event-marker',html:`<span class="pin src-${cluster?'cluster':event.source} ${event.id===selected?'selected':''}">${cluster?group.events.length:event.status==='proposed'?'?':'<i></i>'}</span>`,iconSize:[48,48],iconAnchor:[24,24]})}).addTo(layer);
       marker.on('click',()=>{
         if(cluster && map.getZoom()<18) map.setView([lat,lng],map.getZoom()+1,{animate:false});
         else onSelect(event.id,group.events.map(e=>e.id));

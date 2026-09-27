@@ -63,3 +63,20 @@ test('the Move mood keeps active things only', () => {
   const move = MOODS.find(m => m.id === 'move');
   assert.ok(events.filter(e => move.match(e)).every(e => ['Sport', 'Wellness', 'Outdoor'].includes(e.interest)));
 });
+
+import {buildFlexEvent, consensus, resolveFlex, flexMatches, nextMonday} from './flex.js';
+test('the "?" canoe event lands on Monday and locks the slot most people can do', () => {
+  const flex = buildFlexEvent(new Date(2026, 8, 26));
+  assert.equal(new Date(flex.start).toDateString(), nextMonday(new Date(2026, 8, 26)).toDateString());
+  assert.equal(consensus(flex, 'late').id, 'late');
+  const done = resolveFlex(flex, 'late');
+  assert.equal(done.status, 'published');
+  assert.equal(new Date(done.start).getHours(), 16);
+  assert.equal(new Date(done.start).getMinutes(), 30);
+});
+test('the "?" event only shows for outdoor or movement people', () => {
+  const s = {moodId: null, interests: []};
+  assert.equal(flexMatches({picks: ['food']}, s), false);
+  assert.equal(flexMatches({picks: ['outdoors']}, s), true);
+  assert.equal(flexMatches({picks: ['food']}, {...s, moodId: 'move'}), true);
+});

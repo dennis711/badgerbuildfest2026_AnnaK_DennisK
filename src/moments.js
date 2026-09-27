@@ -115,3 +115,26 @@ export function stageSwitcherHTML(stage) {
     <p class="muted">${esc(STAGES.find(s => s.id === stage).note)}</p>
     <button class="text-button" data-action="replay-onboarding">Replay the first-run screen</button></section>`;
 }
+
+// Sheet section for the AI-coordinated "?" event.
+export function flexSectionHTML(event, {slots, mine, joined, count, dayLabel, lockedLabel}) {
+  if (event.resolved) {
+    return `<div class="flex-box resolved">
+      <p class="flex-confirmed">${icon('check', 14)} Confirmed · ${esc(lockedLabel)}</p>
+      <p>That’s when most people who joined are free. Everyone who joined got this:</p>
+      <div class="flex-notification"><strong>Out There</strong><span>It’s on — canoe &amp; paddle, ${esc(lockedLabel)} at Hoofers. See you on the water.</span></div>
+      <button class="text-button proto-link" data-action="flex-reset">Prototype · back to “time open”</button>
+    </div>`;
+  }
+  const max = Math.max(...slots.map(s => s.votes));
+  return `<div class="flex-box">
+    <p class="flex-explain">Multiple people want to get out on the water. Out There will find the best time window for everyone who joins.</p>
+    <p class="flex-question">When works for you on ${esc(dayLabel)}?</p>
+    <div class="flex-slots" role="group" aria-label="Preferred time">${slots.map(s => `<button data-flex-slot="${s.id}" aria-pressed="${mine === s.id}">
+      <span><strong>${esc(s.label)}</strong><small>${esc(s.time)}</small></span>
+      <i class="flex-bar"><b style="width:${Math.round(s.votes / max * 100)}%"></b></i><em>${s.votes}</em></button>`).join('')}</div>
+    <p class="flex-note">${icon('clock', 13)} 24 hours before, Out There picks the slot where the most people are free, sends everyone a confirmation and turns the “?” into a confirmed event on the map.</p>
+    <p class="flex-count">${count} interested${joined ? ' · you’re in' : ''}</p>
+    <button class="text-button proto-link" data-action="flex-resolve">Prototype · preview the confirmed time</button>
+  </div>`;
+}
