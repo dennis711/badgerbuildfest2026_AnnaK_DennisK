@@ -35,6 +35,11 @@ Logic lives in `src/rhythm.js` (ranking, reasons, learned signals, request parsi
 
 **Demo script:** pick interests → Start exploring → tap *Move* → open a marker → see *Why this* → *Not for me* → Profile → *Week 1* → back to the map for the tonight / outdoor / calendar cards → Profile → *What Out There knows* → *Later* → map shows the Saturday window → *Ask Out There* → “Sarah and I have Saturday afternoon free.” → *View & join* → Join.
 
+## Pitch material
+
+- [`PITCH.md`](PITCH.md) — full pitch basis (German): problem, hard facts with sources, USP, business model, ranking, tech, roadmap, demo script, honest limits.
+- [`DEVPOST.md`](DEVPOST.md) — the Devpost submission story (English).
+
 ## Run it (laptop + phone)
 
 Requires Node.js 20 or later.
